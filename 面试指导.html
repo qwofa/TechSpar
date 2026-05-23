@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unity高级工程师面试指导</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --accent-primary: #e94560;
+            --accent-secondary: #533483;
+            --text-primary: #eaeaea;
+            --text-secondary: #a0a0a0;
+            --border-glow: rgba(233, 69, 96, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            min-height: 100vh;
+        }
+
+        /* Animated background */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .bg-animation::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 80%, rgba(233, 69, 96, 0.08) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(15, 52, 96, 0.15) 0%, transparent 50%);
+            animation: bgMove 20s ease-in-out infinite;
+        }
+
+        @keyframes bgMove {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            50% { transform: translate(-5%, -5%) rotate(5deg); }
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 2px solid var(--accent-primary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-primary), #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-top: 0.5rem;
+        }
+
+        .header .tag {
+            display: inline-block;
+            background: rgba(233, 69, 96, 0.2);
+            border: 1px solid var(--accent-primary);
+            padding: 0.3rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin-top: 1rem;
+            color: var(--accent-primary);
+        }
+
+        /* Navigation */
+        .nav {
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid rgba(233, 69, 96, 0.2);
+            display: flex;
+            gap: 1rem;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        .nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .nav a:hover, .nav a.active {
+            background: rgba(233, 69, 96, 0.2);
+            color: var(--accent-primary);
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Section */
+        .section {
+            margin-bottom: 3rem;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-left: 4px solid var(--accent-primary);
+            padding-left: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-title .icon {
+            font-size: 1.5rem;
+        }
+
+        /* Cards */
+        .card {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(233, 69, 96, 0.15);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(233, 69, 96, 0.15);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-title .badge {
+            background: var(--accent-primary);
+            color: white;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+
+        .toggle-icon {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            transition: transform 0.3s;
+        }
+
+        .card.collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+
+        .card.collapsed .card-content {
+            display: none;
+        }
+
+        .card-content {
+            padding-top: 0.5rem;
+        }
+
+        /* Grid layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        /* Info boxes */
+        .info-box {
+            background: rgba(233, 69, 96, 0.1);
+            border-left: 4px solid var(--accent-primary);
+            padding: 1rem 1.5rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1rem 0;
+        }
+
+        .info-box.warning {
+            background: rgba(255, 193, 7, 0.1);
+            border-left-color: #ffc107;
+        }
+
+        .info-box.success {
+            background: rgba(76, 175, 80, 0.1);
+            border-left-color: #4caf50;
+        }
+
+        .info-box.tip {
+            background: rgba(33, 150, 243, 0.1);
+            border-left-color: #2196f3;
+        }
+
+        .info-box h4 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Lists */
+        .feature-list {
+            list-style: none;
+        }
+
+        .feature-list li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .feature-list li::before {
+            content: '▸';
+            position: absolute;
+            left: 0;
+            color: var(--accent-primary);
+        }
+
+        /* Module cards */
+        .module-card {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(233, 69, 96, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        .module-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(233, 69, 96, 0.2);
+        }
+
+        .module-header {
+            background: linear-gradient(135deg, rgba(233, 69, 96, 0.2), rgba(83, 52, 131, 0.2));
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(233, 69, 96, 0.15);
+        }
+
+        .module-header h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .module-header .level {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 10px;
+            background: var(--accent-primary);
+            color: white;
+        }
+
+        .module-body {
+            padding: 1.5rem;
+        }
+
+        .module-body h4 {
+            color: var(--accent-primary);
+            font-size: 0.95rem;
+            margin: 1rem 0 0.5rem;
+        }
+
+        .module-body h4:first-child {
+            margin-top: 0;
+        }
+
+        .module-body ul {
+            list-style: none;
+            font-size: 0.9rem;
+        }
+
+        .module-body ul li {
+            padding: 0.3rem 0;
+            padding-left: 1rem;
+            position: relative;
+            color: var(--text-secondary);
+        }
+
+        .module-body ul li::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: var(--accent-primary);
+        }
+
+        /* STAR method */
+        .star-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .star-step {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            border: 1px solid rgba(233, 69, 96, 0.2);
+            position: relative;
+        }
+
+        .star-step::after {
+            content: '→';
+            position: absolute;
+            right: -1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--accent-primary);
+            font-size: 1.5rem;
+        }
+
+        .star-step:last-child::after {
+            display: none;
+        }
+
+        .star-step .letter {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-primary), #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .star-step .title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 0.5rem 0;
+        }
+
+        .star-step .desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        /* Resume reframe */
+        .resume-item {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--accent-secondary);
+        }
+
+        .resume-item h4 {
+            color: var(--accent-primary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .resume-item .original {
+            background: rgba(255, 193, 7, 0.1);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .resume-item .original strong {
+            color: #ffc107;
+        }
+
+        .resume-item .refamed {
+            background: rgba(76, 175, 80, 0.1);
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .resume-item .refamed strong {
+            color: #4caf50;
+        }
+
+        /* Anti-pattern */
+        .anti-pattern {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(233, 69, 96, 0.1);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .anti-pattern .icon {
+            font-size: 1.5rem;
+            color: var(--accent-primary);
+        }
+
+        .anti-pattern h4 {
+            color: var(--accent-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .anti-pattern p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Quote */
+        .quote {
+            background: linear-gradient(135deg, rgba(233, 69, 96, 0.15), rgba(83, 52, 131, 0.15));
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+            text-align: center;
+            font-size: 1.2rem;
+            font-style: italic;
+            border: 1px solid rgba(233, 69, 96, 0.2);
+        }
+
+        .quote::before {
+            content: '"';
+            font-size: 3rem;
+            color: var(--accent-primary);
+            display: block;
+            line-height: 1;
+        }
+
+        /* Comparison */
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        @media (max-width: 768px) {
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .comparison-col {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .comparison-col h4 {
+            text-align: center;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .comparison-col.negative h4 {
+            background: rgba(233, 69, 96, 0.2);
+            color: var(--accent-primary);
+        }
+
+        .comparison-col.positive h4 {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4caf50;
+        }
+
+        .comparison-col ul {
+            list-style: none;
+        }
+
+        .comparison-col ul li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+            font-size: 0.9rem;
+        }
+
+        .comparison-col.negative ul li::before {
+            content: '✗';
+            position: absolute;
+            left: 0;
+            color: var(--accent-primary);
+        }
+
+        .comparison-col.positive ul li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            background: var(--bg-secondary);
+            border-top: 1px solid rgba(233, 69, 96, 0.2);
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Progress indicator */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 0%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            z-index: 1000;
+            transition: width 0.1s;
+        }
+
+        /* Scroll to top */
+        .scroll-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 50px;
+            height: 50px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.3s;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 20px rgba(233, 69, 96, 0.4);
+        }
+
+        .scroll-top.visible {
+            opacity: 1;
+        }
+
+        .scroll-top:hover {
+            transform: translateY(-3px);
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-in {
+            animation: fadeInUp 0.6s ease forwards;
+        }
+
+        /* Difficulty indicator */
+        .difficulty {
+            display: inline-flex;
+            gap: 0.25rem;
+        }
+
+        .difficulty .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(233, 69, 96, 0.3);
+        }
+
+        .difficulty .dot.active {
+            background: var(--accent-primary);
+        }
+
+        /* Search */
+        .search-container {
+            margin: 2rem 0;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border: 2px solid rgba(233, 69, 96, 0.2);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 20px rgba(233, 69, 96, 0.2);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        /* Highlight */
+        .highlight {
+            background: linear-gradient(135deg, rgba(233, 69, 96, 0.2), rgba(83, 52, 131, 0.2));
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        code {
+            background: rgba(233, 69, 96, 0.15);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+
+        /* Language suggestions */
+        .lang-box {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 0.5rem 0;
+        }
+
+        .lang-box h5 {
+            color: var(--accent-primary);
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .lang-box p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        /* Interactive tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 0.5rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid rgba(233, 69, 96, 0.2);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .tab:hover {
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .tab.active {
+            background: var(--accent-primary);
+            color: white;
+            border-color: var(--accent-primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="progress-bar" id="progressBar"></div>
+    <div class="bg-animation"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <h1>Unity高级工程师面试指导</h1>
+        <p class="subtitle">5年经验Unity UI开发者的面试突围指南</p>
+        <span class="tag">🎮 针对在线途游SLG项目经验优化</span>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <a href="#high-value" class="active">什么是高价值模块</a>
+        <a href="#double-state">双状态机分析</a>
+        <a href="#modules">高价值模块</a>
+        <a href="#star">STAR方法</a>
+        <a href="#resume">简历重构</a>
+        <a href="#anti-patterns">避坑指南</a>
+    </nav>
+
+    <div class="container">
+        <!-- Search -->
+        <div class="search-container">
+            <input type="text" class="search-input" id="searchInput" placeholder="🔍 搜索内容..." onkeyup="searchContent()">
+        </div>
+
+        <!-- Section 1: What is High-Value Module -->
+        <section class="section" id="high-value">
+            <h2 class="section-title"><span class="icon">💎</span> 什么是"高价值模块"</h2>
+            
+            <div class="quote">
+                面试官不是在问"你会什么技术"，而是在问"你能解决什么问题，创造什么价值"
+            </div>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">🤔 初级/中级开发者的思维模式</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <ul class="feature-list">
+                        <li><strong>关注点：</strong>技术本身（"我会用状态机"、"我会用协程"）</li>
+                        <li><strong>回答方式：</strong>描述实现细节（"我用状态机管理按钮状态"）</li>
+                        <li><strong>思维局限：</strong>这个技术怎么用，而不是为什么用</li>
+                        <li><strong>典型特征：</strong>只关注功能实现，不考虑扩展性、性能、边界情况</li>
+                    </ul>
+                    <div class="info-box warning">
+                        <h4>⚠️ 你的双状态机回答为什么被认为"不够难"</h4>
+                        <p>因为你描述的是<strong>实现方案</strong>，而不是<strong>问题场景和解决方案的权衡</strong>。面试官想知道的是：你遇到过什么复杂问题？怎么分析的？为什么选择这个方案？</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">🚀 高级开发者的思维模式</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <ul class="feature-list">
+                        <li><strong>关注点：</strong>业务价值和技术决策</li>
+                        <li><strong>回答方式：</strong>从问题出发（"当时的挑战是...我们分析了...选择了..."）</li>
+                        <li><strong>思维格局：</strong>技术服务于业务，考虑可维护性、可扩展性、性能</li>
+                        <li><strong>典型特征：</strong>能讲清楚技术选型的"为什么"，有数据支撑的优化成果</li>
+                    </ul>
+                    <div class="info-box success">
+                        <h4>✅ 高级开发者回答的要素</h4>
+                        <p>清晰的<strong>问题背景</strong> + <strong>技术分析</strong> + <strong>决策权衡</strong> + <strong>量化结果</strong></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="comparison">
+                <div class="comparison-col negative">
+                    <h4>❌ 初级回答示例</h4>
+                    <ul>
+                        <li>"我用双状态机来管理UI状态，一个管显示状态，一个管动画状态"</li>
+                        <li>"我做了资源加载优化，使用了对象池"</li>
+                        <li>"我负责UI模块的开发"</li>
+                    </ul>
+                </div>
+                <div class="comparison-col positive">
+                    <h4>✅ 高级回答示例</h4>
+                    <ul>
+                        <li>"针对SLG游戏HUD高频更新的痛点，我设计了双状态机驱动..."</li>
+                        <li>"针对首包占用大的问题，我设计了一套资源分级加载方案..."</li>
+                        <li>"我主导了UI框架的重构，把首帧时间从2.3s优化到0.8s"</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="info-box tip">
+                <h4>💡 核心转变</h4>
+                <p>从 <span class="highlight">"我用了什么技术"</span> 转变为 <span class="highlight">"我解决了什么问题，为什么这么解决"</span></p>
+            </div>
+        </section>
+
+        <!-- Section 2: Double State Machine Analysis -->
+        <section class="section" id="double-state">
+            <h2 class="section-title"><span class="icon">⚙️</span> 双状态机为什么被认为"简单"</h2>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">🔍 问题分析</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <p>面试官说"双状态机不够难"，可能有以下几层含义：</p>
+                    
+                    <h4 style="color: var(--accent-primary); margin: 1rem 0 0.5rem;">1. 状态机本身是基础模式</h4>
+                    <p style="color: var(--text-secondary);">状态机是每个Unity开发者都会的基础技能，面试官期待的是你能<strong>讲出这个方案解决了什么问题</strong>，而不是仅仅描述实现。</p>
+
+                    <h4 style="color: var(--accent-primary); margin: 1rem 0 0.5rem;">2. 缺少问题场景</h4>
+                    <p style="color: var(--text-secondary);">没有说清楚<strong>为什么需要两个状态机</strong>，一个不够吗？两个状态机之间如何同步？</p>
+
+                    <h4 style="color: var(--accent-primary); margin: 1rem 0 0.5rem;">3. 缺少技术深度</h4>
+                    <p style="color: var(--text-secondary);">没有讨论<strong>边界情况</strong>（比如动画被打断怎么办）、<strong>性能考量</strong>（状态切换的开销）、<strong>扩展性</strong>（新增状态的成本）。</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">🔄 如何重构双状态机的回答</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="lang-box">
+                        <h5>📌 问题背景（必讲）</h5>
+                        <p>"在SLG游戏中，HUD面板需要在显示/隐藏状态之间频繁切换，同时内部元素（资源条、任务提示、小地图）有自己的动画状态。如果用单一状态机，会导致状态爆炸——显示+资源加载中+动画播放+资源加载完成+... 至少十几种状态。"</p>
+                    </div>
+                    
+                    <div class="lang-box">
+                        <h5>📌 解决方案（技术决策）</h5>
+                        <p>"我设计了两个独立的状态机：<strong>外层状态机</strong>管理面板的宏观状态（隐藏→显示中→显示→隐藏中），<strong>内层状态机</strong>管理各个UI元素的独立动画状态。它们通过消息机制同步，外层状态变化时通知内层，内层完成后回调外层。"</p>
+                    </div>
+                    
+                    <div class="lang-box">
+                        <h5>📌 关键细节（加分项）</h5>
+                        <p>"遇到过一个问题：玩家快速点击时，外层状态机还在关闭动画，内层已经收到显示指令了。我加了状态锁和命令队列，确保状态转换的原子性。"</p>
+                    </div>
+
+                    <div class="info-box success">
+                        <h4>✅ 关键点</h4>
+                        <p><strong>讲清楚为什么需要这个架构</strong>（状态爆炸问题），<strong>讲清楚边界情况</strong>（快速点击处理），<strong>讲清楚技术权衡</strong>（状态分离 vs 状态爆炸）。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: High-Value Modules -->
+        <section class="section" id="modules">
+            <h2 class="section-title"><span class="icon">🎯</span> 高价值模块详解</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">选择一个你最熟悉的模块，准备300-500字的深度描述</p>
+
+            <div class="grid-2">
+                <!-- Module 1: Resource Management -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3><span class="icon">📦</span> 资源管理系统</h3>
+                        <span class="level">难度:中高</span>
+                        <div class="difficulty">
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot"></span>
+                        </div>
+                    </div>
+                    <div class="module-body">
+                        <h4>💼 业务价值</h4>
+                        <ul>
+                            <li>首包下载量直接决定转化率</li>
+                            <li>运行时的内存峰值影响稳定性</li>
+                            <li>加载等待是最主要的流失原因</li>
+                        </ul>
+                        
+                        <h4>⚡ 技术挑战</h4>
+                        <ul>
+                            <li>资源生命周期管理（何时加载/卸载）</li>
+                            <li>依赖管理（共享资源的引用计数）</li>
+                            <li>缓存策略（内存限制下的LRU）</li>
+                            <li>异步加载的取消和优先级</li>
+                        </ul>
+                        
+                        <h4>🎤 面试话术</h4>
+                        <div class="info-box tip">
+                            <p>"我设计了一套分层资源管理系统：<br>1. <strong>首包资源</strong>：常驻内存，App启动时全部加载<br>2. <strong>场景资源</strong>：按场景加载/卸载，切换时预加载下一个场景<br>3. <strong>动态资源</strong>：按需加载，使用引用计数管理<br><br>在在线途游项目中，我把首帧时间从2.3s优化到0.8s，主要靠的资源预加载和分包策略。"</p>
+                        </div>
+
+                        <h4>👀 面试官想听到</h4>
+                        <ul>
+                            <li>你如何做技术选型（为什么不用Addressables/AssetBundle）</li>
+                            <li>你如何权衡内存和加载速度</li>
+                            <li>你遇到过什么坑，怎么解决的</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Module 2: UI Rendering Optimization -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3><span class="icon">🎨</span> UI渲染管线优化</h3>
+                        <span class="level">难度:中</span>
+                        <div class="difficulty">
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                        </div>
+                    </div>
+                    <div class="module-body">
+                        <h4>💼 业务价值</h4>
+                        <ul>
+                            <li>降低Draw Call直接影响帧率</li>
+                            <li>复杂UI场景下的性能瓶颈</li>
+                            <li>发热、耗电的用户体验问题</li>
+                        </ul>
+                        
+                        <h4>⚡ 技术挑战</h4>
+                        <ul>
+                            <li>Canvas Rebuild的触发条件</li>
+                            <li>动静分离的具体实现</li>
+                            <li>Text.GetPreferredValues的优化</li>
+                            <li>多Canvas层级管理策略</li>
+                        </ul>
+                        
+                        <h4>🎤 面试话术</h4>
+                        <div class="info-box tip">
+                            <p>"UI渲染优化的核心是理解Canvas的Rebuild机制。我做过几个关键优化：<br><br>1. <strong>动静分离</strong>：把频繁变化的元素（血条、数字）和静态元素（图画）放在不同Canvas<br>2. <strong>隐藏优化</strong>：SetActive(false)时自动移出Mesh，visible=true时恢复<br>3. <strong>字体图集</strong>：使用自定义字体图集减少Text组件的Rebuild<br><br>结果是复杂战斗场景下Draw Call从120降到45。"</p>
+                        </div>
+
+                        <h4>👀 面试官想听到</h4>
+                        <ul>
+                            <li>你如何定位性能问题（Profiler的使用）</li>
+                            <li>你对Unity UI底层机制的理解</li>
+                            <li>具体的数据对比</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Module 3: Data Binding Framework -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3><span class="icon">🔗</span> 数据绑定框架</h3>
+                        <span class="level">难度:高</span>
+                        <div class="difficulty">
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                        </div>
+                    </div>
+                    <div class="module-body">
+                        <h4>💼 业务价值</h4>
+                        <ul>
+                            <li>UI和数据解耦，提高开发效率</li>
+                            <li>减少因数据更新导致的bug</li>
+                            <li>支持配置化开发，减少硬编码</li>
+                        </ul>
+                        
+                        <h4>⚡ 技术挑战</h4>
+                        <ul>
+                            <li>双向绑定的实现（数据→UI，UI→数据）</li>
+                            <li>循环依赖的检测和避免</li>
+                            <li>性能开销的控制（脏检查 vs 观察者模式）</li>
+                            <li>复杂数据结构的绑定（列表、嵌套）</li>
+                        </ul>
+                        
+                        <h4>🎤 面试话术</h4>
+                        <div class="info-box tip">
+                            <p>"我设计了一套基于属性通知的数据绑定系统：<br><br>1. <strong>核心机制</strong>：数据对象继承自BindableObject，属性变化时自动通知<br>2. <strong>UI适配</strong>：通过特性标记UI控件和数据属性的绑定关系<br>3. <strong>列表绑定</strong>：支持DataTemplate自动映射，列表项复用<br><br>在王者荣耀世界项目中，这套系统让表单开发效率提升了40%。"</p>
+                        </div>
+
+                        <h4>👀 面试官想听到</h4>
+                        <ul>
+                            <li>你如何设计框架的扩展性</li>
+                            <li>你如何处理边界情况</li>
+                            <li>框架在公司内部的推广情况</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Module 4: Complex HUD System -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3><span class="icon">📊</span> 复杂HUD系统</h3>
+                        <span class="level">难度:中高</span>
+                        <div class="difficulty">
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot"></span>
+                        </div>
+                    </div>
+                    <div class="module-body">
+                        <h4>💼 业务价值</h4>
+                        <ul>
+                            <li>SLG游戏HUD是玩家最常看的界面</li>
+                            <li>高频更新对性能要求极高</li>
+                            <li>实时反映战斗/资源状态</li>
+                        </ul>
+                        
+                        <h4>⚡ 技术挑战</h4>
+                        <ul>
+                            <li>60fps下的更新频率控制</li>
+                            <li>多数据源的优先级排序</li>
+                            <li>遮挡、焦点等复杂状态管理</li>
+                            <li>模块间的解耦和通信</li>
+                        </ul>
+                        
+                        <h4>🎤 面试话术</h4>
+                        <div class="info-box tip">
+                            <p>"SLG的HUD系统有几个特点：高更新频率、多状态协同、复杂的显示规则。我设计的架构是：<br><br>1. <strong>数据层</strong>：统一的DataCenter，按更新频率分级（每秒/每帧/事件驱动）<br>2. <strong>表现层</strong>：各HUD模块订阅感兴趣的数据变化<br>3. <strong>显示层</strong>：通过双缓冲+按需更新优化渲染<br><br>关键是<strong>分级更新策略</strong>，避免所有数据都按60fps更新。"</p>
+                        </div>
+
+                        <h4>👀 面试官想听到</h4>
+                        <ul>
+                            <li>你如何做性能优化（分级更新）</li>
+                            <li>你如何保证数据一致性</li>
+                            <li>你如何设计模块间的接口</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Module 5: Hotfix Framework -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3><span class="icon">🔥</span> 热更新框架</h3>
+                        <span class="level">难度:高</span>
+                        <div class="difficulty">
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                        </div>
+                    </div>
+                    <div class="module-body">
+                        <h4>💼 业务价值</h4>
+                        <ul>
+                            <li>线上问题的快速修复</li>
+                            <li>无需发版即可更新内容</li>
+                            <li>AB测试和灰度发布能力</li>
+                        </ul>
+                        
+                        <h4>⚡ 技术挑战</h4>
+                        <ul>
+                            <li>IL2CPP下的AOT和JIT问题</li>
+                            <li>差异更新的策略和校验</li>
+                            <li>热更代码和原代码的兼容</li>
+                            <li>回滚机制的安全性</li>
+                        </ul>
+                        
+                        <h4>🎤 面试话术</h4>
+                        <div class="info-box tip">
+                            <p>"我参与设计过一套基于Lua的热更新框架，核心设计：<br><br>1. <strong>模块化加载</strong>：热更单元是最小发布粒度，支持按需加载<br>2. <strong>沙箱隔离</strong>：热更代码运行在独立环境，不影响主工程<br>3. <strong>增量更新</strong>：只下载变更部分，平均更新包从8MB降到1.2MB<br>4. <strong>安全回滚</strong>：本地保存上一版本，支持一键回滚<br><br>这套方案在Unity China项目中使用，支持了30+次线上热更。"</p>
+                        </div>
+
+                        <h4>👀 面试官想听到</h4>
+                        <ul>
+                            <li>你如何处理AOT限制</li>
+                            <li>你如何保证热更的安全性</li>
+                            <li>你遇到过什么技术难点</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Module 6: UI Animation System -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3><span class="icon">✨</span> UI动画系统</h3>
+                        <span class="level">难度:中</span>
+                        <div class="difficulty">
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                        </div>
+                    </div>
+                    <div class="module-body">
+                        <h4>💼 业务价值</h4>
+                        <ul>
+                            <li>视觉反馈直接影响操作体验</li>
+                            <li>减少玩家对加载等待的感知</li>
+                            <li>角色动画和UI动画的协调</li>
+                        </ul>
+                        
+                        <h4>⚡ 技术挑战</h4>
+                        <ul>
+                            <li>程序化动画和状态机的结合</li>
+                            <li>动画的打断、插值、混合</li>
+                            <li>性能开销的控制</li>
+                            <li>可配置化（策划配置动画）</li>
+                        </ul>
+                        
+                        <h4>🎤 面试话术</h4>
+                        <div class="info-box tip">
+                            <p>"我设计了一套状态驱动的UI动画系统：<br><br>1. <strong>状态映射</strong>：UI状态和动画状态一一对应，通过配置表管理<br>2. <strong>混合支持</strong>：多个动画可以叠加，比如弹窗出现的同时背景闪烁<br>3. <strong>打断处理</strong>：定义了打断优先级，高优先级动画可以打断低优先级<br>4. <strong>事件回调</strong>：动画完成、被打断都有回调，保证逻辑同步<br><br>策划可以通过配置表调整动画参数，不需要程序介入。"</p>
+                        </div>
+
+                        <h4>👀 面试官想听到</h4>
+                        <ul>
+                            <li>你如何处理动画和逻辑的同步</li>
+                            <li>你如何让策划能够配置</li>
+                            <li>你如何做性能优化</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Module 7: Cross-Platform Adaptation -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3><span class="icon">🌐</span> 跨平台适配框架</h3>
+                        <span class="level">难度:中高</span>
+                        <div class="difficulty">
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot"></span>
+                        </div>
+                    </div>
+                    <div class="module-body">
+                        <h4>💼 业务价值</h4>
+                        <ul>
+                            <li>WebGL版本的用户体验</li>
+                            <li>多分辨率的适配</li>
+                            <li>不同平台的功能差异处理</li>
+                        </ul>
+                        
+                        <h4>⚡ 技术挑战</h4>
+                        <ul>
+                            <li>WebGL的内存限制（通常500MB）</li>
+                            <li>浏览器兼容性问题</li>
+                            <li>本地存储的差异</li>
+                            <li>性能瓶颈分析</li>
+                        </ul>
+                        
+                        <h4>🎤 面试话术</h4>
+                        <div class="info-box tip">
+                            <p>"我负责过Unity WebGL版本的适配，主要挑战：<br><br>1. <strong>内存优化</strong>：WebGL的内存管理更严格，我把资源分成了三档（低端/中端/高端），根据可用内存动态调整<br>2. <strong>渲染优化</strong>：WebGL不支持多线程渲染，我把Canvas拆分得更细，避免大面积Rebuild<br>3. <strong>加载优化</strong>：使用StreamingAsset + WebRequest实现渐进式加载，首屏加载从12s降到4s<br><br>关键是要<strong>建立适配层</strong>，让业务代码不感知平台差异。"</p>
+                        </div>
+
+                        <h4>👀 面试官想听到</h4>
+                        <ul>
+                            <li>你如何定位WebGL特有的问题</li>
+                            <li>你如何做内存优化</li>
+                            <li>你如何设计适配层</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Module 8: Configurable System -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3><span class="icon">⚡</span> 配置化交互系统</h3>
+                        <span class="level">难度:中高</span>
+                        <div class="difficulty">
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot active"></span>
+                            <span class="dot"></span>
+                        </div>
+                    </div>
+                    <div class="module-body">
+                        <h4>💼 业务价值</h4>
+                        <ul>
+                            <li>策划可以独立完成大部分需求</li>
+                            <li>减少开发和策划的沟通成本</li>
+                            <li>快速迭代AB测试</li>
+                        </ul>
+                        
+                        <h4>⚡ 技术挑战</h4>
+                        <ul>
+                            <li>如何设计灵活的配置Schema</li>
+                            <li>配置错误时的容错处理</li>
+                            <li>复杂交互逻辑的配置化表达</li>
+                            <li>配置的热重载</li>
+                        </ul>
+                        
+                        <h4>🎤 面试话术</h4>
+                        <div class="info-box tip">
+                            <p>"我设计了一套零代码交互系统，核心思想是<strong>配置即代码</strong>：<br><br>1. <strong>数据层</strong>：使用JSON Schema定义配置结构，支持嵌套和引用<br>2. <strong>逻辑层</strong>：用配置描述交互状态机，状态、事件、动作都可配置<br>3. <strong>表现层</strong>：通过配置决定UI元素的绑定关系和动画<br><br>比如一个物品提示的配置：<br><code>{ "trigger": "onHover", "action": "showTip", "data": "{itemId}" }</code><br><br>策划可以独立完成大多数的UI交互配置。"</p>
+                        </div>
+
+                        <h4>👀 面试官想听到</h4>
+                        <ul>
+                            <li>你如何设计配置的Schema</li>
+                            <li>你如何处理配置错误</li>
+                            <li>你如何平衡灵活性和复杂度</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: STAR Method -->
+        <section class="section" id="star">
+            <h2 class="section-title"><span class="icon">📋</span> STAR法则 - 游戏开发版</h2>
+
+            <div class="star-container">
+                <div class="star-step">
+                    <div class="letter">S</div>
+                    <div class="title">Situation 情境</div>
+                    <div class="desc">项目背景、团队规模、你的角色</div>
+                </div>
+                <div class="star-step">
+                    <div class="letter">T</div>
+                    <div class="title">Task 任务</div>
+                    <div class="desc">具体问题、挑战、目标</div>
+                </div>
+                <div class="star-step">
+                    <div class="letter">A</div>
+                    <div class="title">Action 行动</div>
+                    <div class="desc">你具体做了什么</div>
+                </div>
+                <div class="star-step">
+                    <div class="letter">R</div>
+                    <div class="title">Result 结果</div>
+                    <div class="desc">量化成果、影响</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">📌 S - 情境（背景要清晰）</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="info-box">
+                        <h4>✅ 要包含的信息</h4>
+                        <ul class="feature-list">
+                            <li><strong>项目类型</strong>：SLG/MOBA/MMORPG/休闲游戏</li>
+                            <li><strong>项目阶段</strong>：预研/开发中/已上线</li>
+                            <li><strong>团队规模</strong>："团队5人，我负责UI模块"</li>
+                            <li><strong>技术栈</strong>：Unity 2021 / IL2CPP / Addressables</li>
+                        </ul>
+                    </div>
+                    <div class="info-box warning">
+                        <h4>❌ 避免</h4>
+                        <ul class="feature-list">
+                            <li>背景太模糊："项目中遇到一个问题"</li>
+                            <li>团队成果讲成个人成果："我们优化了性能"</li>
+                            <li>缺少技术上下文</li>
+                        </ul>
+                    </div>
+                    <div class="lang-box">
+                        <h5>📝 示例</h5>
+                        <p>"在在线途游SLG项目中（Unity 2021 + IL2CPP，团队8人，我负责UI框架），项目上线后收到玩家反馈首屏加载时间过长..."</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">📌 T - 任务（问题要具体）</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="info-box">
+                        <h4>✅ 要包含的信息</h4>
+                        <ul class="feature-list">
+                            <li><strong>具体问题</strong>：不能用"性能不好"这种模糊描述</li>
+                            <li><strong>量化指标</strong>：首帧时间2.3s、内存峰值800MB</li>
+                            <li><strong>约束条件</strong>：不能影响现有功能、要在2周内完成</li>
+                            <li><strong>你为什么负责</strong>：为什么这个问题交给你</li>
+                        </ul>
+                    </div>
+                    <div class="lang-box">
+                        <h5>📝 示例</h5>
+                        <p>"我的任务是<strong>把首帧时间从2.3s降到1.5s以内</strong>，因为数据分析显示加载时间超过1.5s的用户流失率增加30%。约束是<strong>不能改变现有的分包策略</strong>，必须向后兼容。"</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">📌 A - 行动（突出"我"）</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="info-box success">
+                        <h4>✅ 正确姿势</h4>
+                        <ul class="feature-list">
+                            <li>用"<strong>我</strong>设计..."、"<strong>我</strong>实现..."、"<strong>我</strong>主导..."</li>
+                            <li>说清楚<strong>你的思考过程</strong>，不只是做了什么</li>
+                            <li>提到<strong>你克服的困难</strong></li>
+                            <li>如果有<strong>技术权衡</strong>，说出来</li>
+                        </ul>
+                    </div>
+                    <div class="info-box warning">
+                        <h4>❌ 避免</h4>
+                        <ul class="feature-list">
+                            <li>"我们"说了太多次："我们分析、我们设计、我们开发"</li>
+                            <li>只说做了什么，不说为什么</li>
+                            <li>把别人的工作说成自己的</li>
+                        </ul>
+                    </div>
+                    <div class="lang-box">
+                        <h5>📝 示例</h5>
+                        <p>"我<strong>分析</strong>了加载流程，发现主要耗时在资源解压和Shader编译。<strong>我决定</strong>采用异步加载+进度条优化感知时间。<strong>我设计</strong>了一套资源分级策略：核心资源同步加载保证首帧，非核心资源异步加载。<strong>我遇到</strong>的难点是Shader编译的20%耗时，最终<strong>我选择</strong>使用预编译Shader变体来优化..."</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">📌 R - 结果（要有数据）</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="info-box success">
+                        <h4>✅ 结果的公式</h4>
+                        <p><strong>量化指标</strong>（性能/效率/稳定性）+ <strong>业务影响</strong>（用户留存/收入/口碑）+ <strong>个人成长</strong>（学到了什么）</p>
+                    </div>
+                    <div class="lang-box">
+                        <h5>📝 示例</h5>
+                        <p>"最终首帧时间<strong>从2.3s降到0.8s</strong>，优化了65%。<strong>玩家反馈</strong>中关于加载慢的抱怨减少了70%。<strong>这个方案</strong>后来被推广到公司其他项目组。<strong>我学到了</strong>，优化不能只看技术指标，要关注用户实际体验..."</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3 class="card-title">➕ Plus - 加分项</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <p style="margin-bottom: 1rem;">在STAR之后，加一个反思环节，展示你的学习能力和成长思维：</p>
+                    <div class="lang-box">
+                        <h5>📝 反思话术</h5>
+                        <p>"如果重新做一次，我会<strong>更早介入</strong>资源打包流程，而不是在项目后期做优化。<strong>我意识到</strong>性能优化应该是开发过程中持续做的事情，不是最后的救火。<strong>我也想探索</strong>一套自动化的性能监控方案，在开发阶段就能发现问题..."</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 5: Resume Reframe -->
+        <section class="section" id="resume">
+            <h2 class="section-title"><span class="icon">🔄</span> 简历经历重构</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">把你的经历用STAR法则重新包装</p>
+
+            <div class="resume-item">
+                <h4>📦 资源管理重构</h4>
+                <div class="original">
+                    <strong>原简历：</strong>"统一资源加载模块，实现资源缓存和复用"
+                </div>
+                <div class="refamed">
+                    <strong>STAR重构版：</strong><br><br>
+                    <strong>S/T：</strong>在线途游SLG项目上线后，首包体积超过1.2GB，玩家转化率低于预期30%，团队需要我在2周内优化首包大小和加载速度。<br><br>
+                    <strong>A：</strong>我分析了现有资源加载架构的三大问题：1）资源没有按使用频率分级 2）重复资源没有去重 3）加载时机不合理导致卡顿。<br>
+                    我设计了一套分层资源管理方案：核心资源（首屏必需）走预加载，非核心资源按需加载，共享资源走统一缓存池。我还引入了资源引用计数机制来解决卸载时的依赖安全问题。<br><br>
+                    <strong>R：</strong>首包体积从1.2GB降到800MB，首帧时间从2.3s优化到0.8s。玩家等待转化率提升了25%。这套方案后来推广到公司其他三个项目。
+                </div>
+            </div>
+
+            <div class="resume-item">
+                <h4>⚙️ 双状态机</h4>
+                <div class="original">
+                    <strong>原简历：</strong>"使用双状态机管理UI面板显示逻辑"
+                </div>
+                <div class="refamed">
+                    <strong>STAR重构版：</strong><br><br>
+                    <strong>S/T：</strong>SLG游戏的HUD需要同时处理面板的显示/隐藏状态和内部元素的动画状态。原来的实现把所有状态混在一起，导致状态机膨胀到难以维护，新功能需要2-3天才能稳定。<br><br>
+                    <strong>A：</strong>我设计了一个双层状态机架构：外层状态机管理面板的宏观状态（隐藏→显示中→显示→隐藏中），内层状态机管理各元素的独立动画状态。两个状态机通过事件消息同步，外层状态变化时广播给内层，内层完成后回调外层。我还实现了状态锁机制来处理快速点击的并发问题，防止状态错乱。<br><br>
+                    <strong>R：</strong>新功能开发时间从2-3天降到半天，状态相关的bug减少了80%。代码可读性大幅提升，新人上手时间从一周降到两天。
+                </div>
+            </div>
+
+            <div class="resume-item">
+                <h4>🤖 AI工作流优化（重点包装）</h4>
+                <div class="original">
+                    <strong>原简历：</strong>"AI行为流程配置工具"
+                </div>
+                <div class="refamed">
+                    <strong>STAR重构版：</strong><br><br>
+                    <strong>S/T：</strong>王者荣耀世界项目中的AI行为配置是个黑盒工作，策划需要写代码逻辑来定义AI行为，每次调整都需要程序介入，平均一个AI行为调整需要1-2天等待。团队希望让策划能独立配置AI行为，减少沟通成本。<br><br>
+                    <strong>A：</strong>我设计并实现了一套可视化AI行为配置工具。核心创新点：<br>
+                    1）<strong>节点式编辑器</strong>：把AI行为拆分成条件节点、行动节点、序列/并行节点，策划可以拖拽组合<br>
+                    2）<strong>数据驱动</strong>：所有行为定义在配置表中，运行时解析执行<br>
+                    3）<strong>实时预览</strong>：配置完成后可以立即预览AI行为，不用等打包<br>
+                    4）<strong>调试工具</strong>：运行时可以看到AI的决策路径和变量值<br><br>
+                    <strong>R：</strong>策划独立完成AI配置的比例从20%提升到85%，AI相关需求平均 turnaround 时间从2天降到2小时。工具上线后成为策划日常使用率最高的编辑器工具之一。
+                </div>
+                <div class="info-box tip">
+                    <h4>💡 这是个很强的项目！</h4>
+                    <p>AI工作流工具涉及<strong>可视化编辑</strong>、<strong>数据驱动</strong>、<strong>运行时调试</strong>等多个技术点，是展示架构能力的绝佳素材。要突出"让策划提效"和"减少沟通成本"这个业务价值。</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 6: Anti-patterns -->
+        <section class="section" id="anti-patterns">
+            <h2 class="section-title"><span class="icon">⚠️</span> 面试避坑指南</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">这些回答会让你显得像初级开发者</p>
+
+            <div class="anti-pattern">
+                <div class="icon">💬</div>
+                <div>
+                    <h4>"我优化了性能"</h4>
+                    <p><strong>问题：</strong>太模糊，没有说清楚优化了什么指标、从多少到多少。<br>
+                    <strong>改进：</strong>"我优化了UI渲染性能，通过动静分离和Canvas拆分，把复杂场景的Draw Call从120降到45"</p>
+                </div>
+            </div>
+
+            <div class="anti-pattern">
+                <div class="icon">💬</div>
+                <div>
+                    <h4>"我用了状态机"</h4>
+                    <p><strong>问题：</strong>工具/技术本身不重要，重要的是为什么用。<br>
+                    <strong>改进：</strong>"我分析发现面板状态和内部动画状态需要独立管理，所以我设计了两个状态机..."</p>
+                </div>
+            </div>
+
+            <div class="anti-pattern">
+                <div class="icon">💬</div>
+                <div>
+                    <h4>"我们团队优化了..."</h4>
+                    <p><strong>问题：</strong>面试官想知道你做了什么，不是团队做了什么。<br>
+                    <strong>改进：</strong>"我主导了优化方案设计，团队其他成员负责具体实现，我主要负责..."</p>
+                </div>
+            </div>
+
+            <div class="anti-pattern">
+                <div class="icon">💬</div>
+                <div>
+                    <h4>"遇到了很多困难，最终解决了"</h4>
+                    <p><strong>问题：</strong>没有具体说明是什么困难，怎么解决的。<br>
+                    <strong>改进：</strong>"最大的困难是XX，我尝试了A方案（效果/问题），最终选择了B方案，因为..."</p>
+                </div>
+            </div>
+
+            <div class="anti-pattern">
+                <div class="icon">💬</div>
+                <div>
+                    <h4>"这个项目很难，很有挑战"</h4>
+                    <p><strong>问题：</strong>没有说清楚具体难在哪里。<br>
+                    <strong>改进：</strong>"技术难点主要在XX，因为它涉及到YY的权衡，我通过ZZ方法解决了..."</p>
+                </div>
+            </div>
+
+            <div class="info-box tip" style="margin-top: 2rem;">
+                <h4>💡 黄金法则</h4>
+                <p><strong>每个回答都要包含：具体的问题 + 你的分析 + 你的行动 + 可量化的结果</strong></p>
+            </div>
+        </section>
+
+        <!-- Quick Reference -->
+        <section class="section">
+            <h2 class="section-title"><span class="icon">📚</span> 快速参考 - 面试话术卡</h2>
+            
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab(this, 'tab1')">资源管理</button>
+                <button class="tab" onclick="switchTab(this, 'tab2')">UI优化</button>
+                <button class="tab" onclick="switchTab(this, 'tab3')">框架设计</button>
+                <button class="tab" onclick="switchTab(this, 'tab4')">性能分析</button>
+            </div>
+
+            <div id="tab1" class="tab-content active">
+                <div class="card" style="background: var(--bg-card);">
+                    <h4 style="color: var(--accent-primary); margin-bottom: 1rem;">资源管理话术</h4>
+                    <div class="lang-box">
+                        <p>"我设计了一套分层资源管理系统：<br><br>
+                        <strong>首包资源</strong>：常驻内存，App启动时全部加载<br>
+                        <strong>场景资源</strong>：按场景加载/卸载，切换时预加载下一个场景<br>
+                        <strong>动态资源</strong>：按需加载，使用引用计数管理<br><br>
+                        在在线途游项目中，我把首帧时间从2.3s优化到0.8s。主要做了三件事：1) 资源分级，2) 异步加载，3) Shader预热。"</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab2" class="tab-content">
+                <div class="card" style="background: var(--bg-card);">
+                    <h4 style="color: var(--accent-primary); margin-bottom: 1rem;">UI优化话术</h4>
+                    <div class="lang-box">
+                        <p>"UI渲染优化的核心是理解Canvas的Rebuild机制。我做过几个关键优化：<br><br>
+                        <strong>动静分离</strong>：把频繁变化的元素（血条、数字）和静态元素（图画）放在不同Canvas<br>
+                        <strong>隐藏优化</strong>：SetActive(false)时自动移出Mesh<br>
+                        <strong>字体图集</strong>：使用自定义字体图集减少Text组件的Rebuild<br><br>
+                        结果是复杂战斗场景下Draw Call从120降到45。"</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab3" class="tab-content">
+                <div class="card" style="background: var(--bg-card);">
+                    <h4 style="color: var(--accent-primary); margin-bottom: 1rem;">框架设计话术</h4>
+                    <div class="lang-box">
+                        <p>"框架设计的核心是<strong>解决实际问题</strong>而不是<strong>炫技</strong>。我设计框架时会考虑：<br><br>
+                        1. <strong>问题驱动</strong>：先明确要解决什么问题<br>
+                        2. <strong>最小化接口</strong>：暴露最少的API，降低使用成本<br>
+                        3. <strong>可测试性</strong>：业务逻辑和框架逻辑分离<br>
+                        4. <strong>渐进式扩展</strong>：基础功能简单，高级功能可选<br><br>
+                        例如数据绑定框架，我用特性标记替代JSON配置，减少了80%的模板代码。"</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab4" class="tab-content">
+                <div class="card" style="background: var(--bg-card);">
+                    <h4 style="color: var(--accent-primary); margin-bottom: 1rem;">性能分析话术</h4>
+                    <div class="lang-box">
+                        <p>"我性能优化的流程是：<br><br>
+                        1. <strong>数据收集</strong>：用Profiler定位瓶颈，确定优化目标<br>
+                        2. <strong>假设验证</strong>：提出假设，做A/B测试验证<br>
+                        3. <strong>收益评估</strong>：确认优化收益是否值得付出的复杂度<br>
+                        4. <strong>监控上线</strong>：添加性能监控，防止性能回退<br><br>
+                        重要原则：<strong>不要过早优化</strong>，用数据驱动优化决策。"</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Unity高级工程师面试指南 | 针对在线途游SLG项目优化</p>
+        <p style="margin-top: 0.5rem; font-size: 0.8rem;">记住：面试是展示你解决问题的能力，不只是你会什么技术</p>
+    </footer>
+
+    <!-- Scroll to top button -->
+    <button class="scroll-top" id="scrollTop" onclick="scrollToTop()">↑</button>
+
+    <script>
+        // Toggle card collapse/expand
+        function toggleCard(header) {
+            const card = header.parentElement;
+            card.classList.toggle('collapsed');
+        }
+
+        // Tab switching
+        function switchTab(button, tabId) {
+            // Update buttons
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            button.classList.add('active');
+            
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        // Progress bar
+        window.addEventListener('scroll', () => {
+            const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+            const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            const scrolled = (winScroll / height) * 100;
+            document.getElementById('progressBar').style.width = scrolled + '%';
+
+            // Show/hide scroll to top button
+            const scrollTop = document.getElementById('scrollTop');
+            if (winScroll > 500) {
+                scrollTop.classList.add('visible');
+            } else {
+                scrollTop.classList.remove('visible');
+            }
+        });
+
+        // Scroll to top
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Navigation active state
+        const navLinks = document.querySelectorAll('.nav a');
+        const sections = document.querySelectorAll('.section');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (scrollY >= sectionTop - 200) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        });
+
+        // Smooth scroll for nav links
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = link.getAttribute('href');
+                const targetSection = document.querySelector(targetId);
+                if (targetSection) {
+                    targetSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+
+        // Search functionality
+        function searchContent() {
+            const input = document.getElementById('searchInput');
+            const filter = input.value.toLowerCase();
+            const cards = document.querySelectorAll('.card, .module-card, .resume-item');
+
+            cards.forEach(card => {
+                const text = card.textContent.toLowerCase();
+                if (text.includes(filter)) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        // Animate elements on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('animate-in');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.card, .module-card, .resume-item').forEach(el => {
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>

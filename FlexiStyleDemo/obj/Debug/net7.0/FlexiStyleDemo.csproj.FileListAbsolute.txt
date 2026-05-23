@@ -1,0 +1,14 @@
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\FlexiStyleDemo.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\FlexiStyleDemo.AssemblyInfoInputs.cache
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\FlexiStyleDemo.AssemblyInfo.cs
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\FlexiStyleDemo.csproj.CoreCompileInputs.cache
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\bin\Debug\net7.0\FlexiStyleDemo.exe
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\bin\Debug\net7.0\FlexiStyleDemo.deps.json
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\bin\Debug\net7.0\FlexiStyleDemo.runtimeconfig.json
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\bin\Debug\net7.0\FlexiStyleDemo.dll
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\bin\Debug\net7.0\FlexiStyleDemo.pdb
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\FlexiStyleDemo.dll
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\refint\FlexiStyleDemo.dll
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\FlexiStyleDemo.pdb
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\FlexiStyleDemo.genruntimeconfig.cache
+C:\Users\seigi\Desktop\26面试\FlexiStyleDemo\obj\Debug\net7.0\ref\FlexiStyleDemo.dll
