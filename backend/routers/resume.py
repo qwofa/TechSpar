@@ -1,5 +1,6 @@
 """Resume and speech-to-text routes."""
 
+import re
 import shutil
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -9,6 +10,23 @@ from backend.config import settings
 from backend.indexer import _index_cache
 
 router = APIRouter(prefix="/api")
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Normalize filename to safe ASCII/UTF-8, preserving extension."""
+    name = filename.rsplit(".", 1)
+    if len(name) == 2:
+        base, ext = name
+    else:
+        base, ext = filename, ""
+    # Replace problematic characters with underscore
+    base = re.sub(r'[<>:"|?*\x00-\x1f]', "_", base)
+    # Collapse multiple spaces/underscores
+    base = re.sub(r'[\s_]+', "_", base.strip())
+    if ext:
+        ext = ext.lstrip(".").lower()
+        return f"{base}.{ext}"
+    return base
 
 
 @router.get("/resume/status")
@@ -41,7 +59,8 @@ async def upload_resume(file: UploadFile = File(...), user_id: str = Depends(get
         if old.is_file():
             old.unlink()
 
-    dest = resume_dir / file.filename
+    safe_filename = _sanitize_filename(file.filename)
+    dest = resume_dir / safe_filename
     content = await file.read()
     dest.write_bytes(content)
 

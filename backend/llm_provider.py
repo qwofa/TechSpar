@@ -15,6 +15,8 @@ def get_langchain_llm():
         base_url=settings.api_base,
         temperature=settings.temperature,
         streaming=True,
+        request_timeout=30,
+        max_retries=1,
     )
 
 
@@ -57,6 +59,8 @@ def get_embedding():
             kwargs = {
                 "model_name": model_name,
                 "api_key": settings.embedding_api_key,
+                "timeout": 15.0,
+                "max_retries": 2,
             }
             if settings.embedding_api_base:
                 kwargs["api_base"] = settings.embedding_api_base

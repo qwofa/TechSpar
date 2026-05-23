@@ -2,6 +2,7 @@
 
 * [文档首页](README.md)
 * [部署说明](deployment.md)
+* [项目启停指南](../本地部署指南.md)
 * [外部服务配置](external-services.md)
 * [快速开始](quick-start.md)
 * [新手上手](getting-started.md)

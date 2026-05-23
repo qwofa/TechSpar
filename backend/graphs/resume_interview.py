@@ -46,6 +46,8 @@ async def init_resume_checkpointer() -> None:
     path = settings.base_dir / "data" / "langgraph_checkpoints.sqlite"
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = await aiosqlite.connect(str(path))
+    # WAL mode for better concurrent read performance
+    await conn.execute("PRAGMA journal_mode=WAL")
     saver = AsyncSqliteSaver(conn)
     await saver.setup()
     _CHECKPOINTER = saver
@@ -82,10 +84,27 @@ def _make_init_interview(user_id: str):
     """Create init_interview node bound to a specific user."""
     async def init_interview(state: ResumeInterviewState) -> dict:
         """Load resume context and prepare the opening."""
-        resume_ctx = await asyncio.to_thread(
-            query_resume, "列出候选人的所有项目经历、技能和教育背景", user_id
-        )
-        profile_summary = await asyncio.to_thread(get_profile_summary, user_id)
+        try:
+            resume_ctx = await asyncio.to_thread(
+                query_resume, "列出候选人的所有项目经历、技能和教育背景", user_id
+            )
+        except Exception as exc:
+            logger.exception("Failed to query resume for user %s", user_id)
+            raise RuntimeError(
+                f"简历解析失败: {exc}. 请尝试重新上传简历。"
+            ) from exc
+
+        if not resume_ctx or not resume_ctx.strip():
+            raise RuntimeError(
+                "简历内容为空，无法开始面试。请确认 PDF 包含可提取的文字（非纯图片扫描件），"
+                "并重新上传。"
+            )
+
+        try:
+            profile_summary = await asyncio.to_thread(get_profile_summary, user_id)
+        except Exception as exc:
+            logger.warning("Failed to load profile summary for user %s: %s", user_id, exc)
+            profile_summary = "新用户，暂无历史数据"
 
         target_role = (state.get("target_role") or "").strip() or "候选人应聘岗位"
         system_prompt = RESUME_INTERVIEWER_SYSTEM.format(
@@ -96,11 +115,17 @@ def _make_init_interview(user_id: str):
             user_profile=profile_summary,
         )
 
-        llm = get_langchain_llm()
-        response = await llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content="面试开始，请开场并让候选人做自我介绍。"),
-        ])
+        try:
+            llm = get_langchain_llm()
+            response = await llm.ainvoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content="面试开始，请开场并让候选人做自我介绍。"),
+            ])
+        except Exception as exc:
+            logger.exception("LLM call failed during init_interview for user %s", user_id)
+            raise RuntimeError(
+                f"AI 面试官启动失败: {exc}. 请检查网络和 API 配置后重试。"
+            ) from exc
 
         return {
             "messages": [response],
@@ -113,6 +138,27 @@ def _make_init_interview(user_id: str):
             "eval_history": [],
         }
     return init_interview
+
+
+# Phrases that signal the user has no more questions
+_CLOSING_PATTERNS = re.compile(
+    r"^(没问题了|没有问题了|问完了|没什么问题了?|就这样吧|就这样吧。|问完了|没别的了|我没了|可以结束了|没问题|我没有了|暂时没有了|暂时没别的了|暂时没问题|再没有了|再问一个吧"
+    r"|没了|可以了|没什么|问完了|没其他问题|暂时没|就这些|就这些吧|暂时就这些|暂时没了)$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_closing(user_message: str) -> bool:
+    """Return True if the user's message signals they have no more questions."""
+    text = user_message.strip()
+    return bool(_CLOSING_PATTERNS.match(text)) or _looks_like_closing_heuristic(text)
+
+
+def _looks_like_closing_heuristic(text: str) -> bool:
+    """Fallback heuristic: very short 'no questions' patterns."""
+    short_negations = {"没了", "没有了", "问完了", "可以了", "就这样", "没", "不了", "暂时没", "没有了"}
+    return text in short_negations or (len(text) <= 8 and any(
+        neg in text for neg in ["没", "不了", "可以了", "没了", "问完"]))
 
 
 def _make_interviewer_ask(user_id: str):
@@ -161,9 +207,28 @@ def _make_interviewer_ask(user_id: str):
     return interviewer_ask
 
 
+def _is_no_questions_signal(state: ResumeInterviewState) -> bool:
+    """Return True if the last message is a 'no more questions' signal in reverse_qa."""
+    if state.get("phase") != InterviewPhase.REVERSE_QA.value:
+        return False
+    messages = list(state.get("messages", []))
+    if not messages:
+        return False
+    last = messages[-1]
+    if not isinstance(last, HumanMessage):
+        return False
+    return _looks_like_closing(last.content.strip())
+
+
 def route_after_answer(state: ResumeInterviewState) -> str:
     """After user answers: keep asking, advance phase, or end."""
     if state.get("is_finished"):
+        return "end"
+
+    # If user explicitly says "没问题了" or similar in reverse_qa, end immediately
+    # without spending a LLM call on an unnecessary closing response.
+    if _is_no_questions_signal(state):
+        logger.info("User signaled no more questions — routing to end")
         return "end"
 
     phase = state.get("phase", "greeting")

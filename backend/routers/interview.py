@@ -183,11 +183,27 @@ async def start_interview(req: StartInterviewRequest, user_id: str = Depends(get
         if not target_role:
             raise HTTPException(400, "请先填写目标岗位")
 
-        await update_target_role(user_id, target_role)
+        try:
+            await update_target_role(user_id, target_role)
+        except Exception as exc:
+            logger.warning("Failed to update target role for user %s: %s", user_id, exc)
 
-        graph = compile_resume_interview(user_id)
-        config = {"configurable": {"thread_id": session_id}}
-        result = await graph.ainvoke({"target_role": target_role}, config)
+        try:
+            graph = compile_resume_interview(user_id)
+            config = {"configurable": {"thread_id": session_id}}
+            result = await graph.ainvoke({"target_role": target_role}, config)
+        except Exception as exc:
+            logger.exception("Failed to start resume interview for user %s", user_id)
+            error_msg = str(exc)
+            # Surface friendly messages from RuntimeError raised by init_interview
+            if isinstance(exc, RuntimeError) or "RuntimeError" in type(exc).__name__:
+                raise HTTPException(500, error_msg)
+            # For other errors, give a helpful generic message
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                raise HTTPException(500, f"简历解析超时，请重试。如果持续失败请重新上传简历。({error_msg[:100]})")
+            if "embed" in error_msg.lower() or "api" in error_msg.lower():
+                raise HTTPException(500, f"API 调用失败: {error_msg[:150]}")
+            raise HTTPException(500, f"启动面试失败: {error_msg[:200]}")
 
         ai_message = ""
         for msg in reversed(result["messages"]):
