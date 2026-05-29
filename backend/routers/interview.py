@@ -370,6 +370,7 @@ async def _run_resume_review(session_id: str, user_id: str):
             topic=topic_name,
             eval_history=eval_history,
             resume_context=resume_context,
+            user_id=user_id,
         )
 
         extraction = await update_profile_after_interview(
@@ -777,7 +778,7 @@ async def generate_reference_answer(body: dict, user_id: str = Depends(get_curre
         knowledge_context=knowledge_context,
     )
 
-    llm = get_langchain_llm()
+    llm = get_langchain_llm(user_id)
     response = llm.invoke([HumanMessage(content=prompt)])
     answer = response.content.strip()
     save_reference_answer(session_id, qid, answer, user_id=user_id)

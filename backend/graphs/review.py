@@ -14,6 +14,7 @@ def generate_review(
     topic: str | None = None,
     eval_history: list[dict] | None = None,
     resume_context: str | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Generate a structured review report from interview transcript."""
 
@@ -78,7 +79,7 @@ def generate_review(
         extra_context=extra,
     )
 
-    llm = get_langchain_llm()
+    llm = get_langchain_llm(user_id)
     response = llm.invoke([
         SystemMessage(content=prompt),
         HumanMessage(content="请生成复盘报告。"),

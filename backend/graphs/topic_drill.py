@@ -133,7 +133,7 @@ def generate_drill_questions(
         weak_count=weak_count,
     )
 
-    llm = get_langchain_llm()
+    llm = get_langchain_llm(user_id)
     response = llm.invoke([
         SystemMessage(content="你是专项训练出题引擎。只返回 JSON 数组，不要其他内容。"),
         HumanMessage(content=prompt),
@@ -184,7 +184,7 @@ def evaluate_drill_answers(topic: str, questions: list[dict], answers: list[dict
         references="\n\n".join(ref_lines)[:8000],
     )
 
-    llm = get_langchain_llm()
+    llm = get_langchain_llm(user_id)
     response = llm.invoke([
         SystemMessage(content="你是训练评估引擎。只返回 JSON，不要其他内容。"),
         HumanMessage(content=prompt),

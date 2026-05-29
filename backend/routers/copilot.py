@@ -149,10 +149,14 @@ async def get_copilot_strategy_tree(prep_id: str, user_id: str = Depends(get_cur
 async def copilot_realtime_ws(ws: WebSocket, session_id: str, token: str = ""):
     """Copilot 实时面试辅助 WebSocket。"""
     from backend.auth import decode_token
+    from backend.user_context import set_current_user
 
     await ws.accept()
     session = None
     user_id = decode_token(token) if token else None
+    # Bind user for this connection — realtime copilot subsystem resolves its
+    # LLM/embedding via the ContextVar (create_task tasks copy the context).
+    set_current_user(user_id)
 
     try:
         while True:
