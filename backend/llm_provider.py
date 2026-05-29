@@ -21,11 +21,24 @@ from backend.config import (
     embedding_target_of,
     settings,
 )
-from backend.storage.user_settings import load_user_provider
+from backend.storage.user_settings import load_user_provider, load_user_services
 from backend.user_context import get_current_user_id
 
 # user_key ("__global__" or user_id) → (signature, embed_instance)
 _embedding_cache: dict[str, tuple[str, object]] = {}
+
+_DEFAULT_TEMPERATURE = 0.7
+_COPILOT_TEMPERATURE = 0.3  # Copilot 场景偏确定性
+
+
+class ProviderNotConfigured(RuntimeError):
+    """A user tried to use an LLM/Embedding they haven't configured. There is no
+    global fallback — every user brings their own key. Mapped to a 400 with a
+    'go configure' hint in app.py so the UI can route them to onboarding."""
+
+    def __init__(self, what: str):
+        self.what = what  # "LLM" | "Embedding"
+        super().__init__(f"{what} provider not configured for this user")
 
 
 def _effective_uid(user_id: str | None) -> str | None:
@@ -35,42 +48,36 @@ def _effective_uid(user_id: str | None) -> str | None:
 # ── Config resolution ──
 
 def resolve_llm_config(user_id: str | None = None) -> dict:
+    """Resolve this user's LLM config. Per-user only — no global fallback; missing
+    fields stay empty and surface as ProviderNotConfigured when a client is built."""
     uid = _effective_uid(user_id)
     override = load_user_provider(uid)[0] if uid else None
     if override is None:
-        return {
-            "api_base": settings.api_base,
-            "api_key": settings.api_key,
-            "model": settings.model,
-            "temperature": settings.temperature,
-        }
+        return {"api_base": "", "api_key": "", "model": "", "temperature": _DEFAULT_TEMPERATURE}
     return {
-        "api_base": override.api_base or settings.api_base,
-        "api_key": override.api_key or settings.api_key,
-        "model": override.model or settings.model,
+        "api_base": override.api_base,
+        "api_key": override.api_key,
+        "model": override.model,
         "temperature": override.temperature,
     }
 
 
 def resolve_embedding_config(user_id: str | None = None) -> dict:
+    """Resolve this user's embedding config (per-user only, no global fallback)."""
     uid = _effective_uid(user_id)
     override = load_user_provider(uid)[1] if uid else None
     if override is None:
         return {
-            "backend": settings.embedding_backend,
-            "api_base": settings.embedding_api_base,
-            "api_key": settings.embedding_api_key,
-            "api_model": settings.embedding_api_model,
-            "local_model": settings.local_embedding_model,
-            "local_path": settings.local_embedding_path,
+            "backend": "", "api_base": "", "api_key": "",
+            "api_model": "", "local_model": "", "local_path": "",
         }
     return {
-        "backend": override.backend or settings.embedding_backend,
-        "api_base": override.api_base or settings.embedding_api_base,
-        "api_key": override.api_key or settings.embedding_api_key,
-        "api_model": override.api_model or settings.embedding_api_model,
-        "local_model": override.local_model or settings.local_embedding_model,
-        "local_path": override.local_path or settings.local_embedding_path,
+        "backend": override.backend,
+        "api_base": override.api_base,
+        "api_key": override.api_key,
+        "api_model": override.api_model,
+        "local_model": override.local_model,
+        "local_path": override.local_path,
     }
 
 
@@ -81,7 +88,7 @@ def embedding_signature(user_id: str | None = None) -> str:
     c = resolve_embedding_config(user_id)
     return embedding_target_of(
         c["backend"], c["api_base"], c["api_key"], c["api_model"],
-        c["local_model"], c["local_path"], settings.base_dir, settings.embedding_model,
+        c["local_model"], c["local_path"], settings.base_dir, "",
     )
 
 
@@ -95,9 +102,15 @@ def _embedding_cache_sig(c: dict) -> str:
 
 # ── LLM ──
 
+def _require_llm(c: dict):
+    if not c["api_key"] or not c["model"]:
+        raise ProviderNotConfigured("LLM")
+
+
 def get_langchain_llm(user_id: str | None = None):
     """LangChain ChatModel for LangGraph nodes (via OpenAI-compatible proxy)."""
     c = resolve_llm_config(user_id)
+    _require_llm(c)
     return ChatOpenAI(
         model=c["model"],
         api_key=c["api_key"],
@@ -108,13 +121,14 @@ def get_langchain_llm(user_id: str | None = None):
 
 
 def get_copilot_llm(user_id: str | None = None, streaming: bool = False):
-    """Copilot LLM — global COPILOT_* overrides win, else falls back to the user's main LLM."""
+    """Copilot uses the user's own main LLM (no separate Copilot provider)."""
     c = resolve_llm_config(user_id)
+    _require_llm(c)
     return ChatOpenAI(
-        model=settings.copilot_model or c["model"],
-        api_key=settings.copilot_api_key or c["api_key"],
-        base_url=settings.copilot_api_base or c["api_base"],
-        temperature=settings.copilot_temperature,
+        model=c["model"],
+        api_key=c["api_key"],
+        base_url=c["api_base"],
+        temperature=_COPILOT_TEMPERATURE,
         streaming=streaming,
     )
 
@@ -122,6 +136,7 @@ def get_copilot_llm(user_id: str | None = None, streaming: bool = False):
 def get_llama_llm(user_id: str | None = None):
     """LlamaIndex LLM (per call — construction is cheap)."""
     c = resolve_llm_config(user_id)
+    _require_llm(c)
     return OpenAILike(
         model=c["model"],
         api_key=c["api_key"],
@@ -134,10 +149,12 @@ def get_llama_llm(user_id: str | None = None):
 # ── Embedding ──
 
 def _build_embedding(c: dict):
-    deprecated = settings.embedding_model
+    deprecated = ""
     if embedding_mode_of(c["backend"], c["api_base"], c["api_key"]) == "api":
         from llama_index.embeddings.openai import OpenAIEmbedding
 
+        if not c["api_key"]:
+            raise ProviderNotConfigured("Embedding")
         model_name = embedding_api_model_of(c["api_model"], deprecated)
         if not model_name:
             raise RuntimeError("EMBEDDING_API_MODEL is required when EMBEDDING_BACKEND=api")
@@ -185,3 +202,29 @@ def reset_embedding_cache(user_id: str | None = None):
         _embedding_cache.clear()
     else:
         _embedding_cache.pop(user_id, None)
+
+
+# ── Optional service credentials (per-user, no global fallback) ──
+
+def resolve_dashscope_key(user_id: str | None = None) -> str:
+    """DashScope key for ASR (语音输入 / 录音转写 / Copilot 实时)。未配置返回空串。"""
+    uid = _effective_uid(user_id)
+    return load_user_services(uid).dashscope_api_key if uid else ""
+
+
+def resolve_tavily_key(user_id: str | None = None) -> str:
+    """Tavily key for Copilot 联网搜索。未配置返回空串。"""
+    uid = _effective_uid(user_id)
+    return load_user_services(uid).tavily_api_key if uid else ""
+
+
+def resolve_oss_config(user_id: str | None = None) -> dict:
+    """阿里云 OSS 配置(录音复盘长音频上传)。未配置字段为空串。"""
+    uid = _effective_uid(user_id)
+    s = load_user_services(uid) if uid else None
+    return {
+        "access_key_id": s.oss_access_key_id if s else "",
+        "access_key_secret": s.oss_access_key_secret if s else "",
+        "bucket": s.oss_bucket if s else "",
+        "endpoint": s.oss_endpoint if s else "",
+    }

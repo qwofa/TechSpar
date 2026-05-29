@@ -25,7 +25,7 @@ def get_user_settings(user_id: str = Depends(get_current_user)):
     """Return this user's own LLM/Embedding overrides (empty fields inherit the
     global .env default), plus global system flags and per-user training prefs."""
     llm_override, emb_override = load_user_provider(user_id)
-    llm = llm_override or LLMSettings(temperature=settings.temperature)
+    llm = llm_override or LLMSettings()
     embedding = emb_override or EmbeddingSettings()
     system = SystemSettings(allow_registration=settings.allow_registration)
     training = load_user_settings(user_id)

@@ -27,3 +27,35 @@ def reset_current_user(token) -> None:
 
 def get_current_user_id() -> str | None:
     return _current_user_id.get()
+
+
+class CurrentUserMiddleware:
+    """ASGI middleware that binds the request's authenticated user into the
+    contextvar, so per-user provider resolvers work without threading user_id
+    through every call site. Best-effort — a missing/invalid token leaves it unset.
+
+    WebSocket connections set the user explicitly in their handler (the bearer
+    token arrives out-of-band), so this only needs to cover plain HTTP."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        from backend.auth import decode_token
+
+        uid = None
+        for key, value in scope.get("headers", []):
+            if key == b"authorization":
+                parts = value.decode("latin-1").split(" ", 1)
+                if len(parts) == 2 and parts[0].lower() == "bearer":
+                    uid = decode_token(parts[1])
+                break
+        token = set_current_user(uid) if uid else None
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            if token is not None:
+                reset_current_user(token)

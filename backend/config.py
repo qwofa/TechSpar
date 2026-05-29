@@ -53,45 +53,10 @@ def embedding_target_of(
 
 
 class Settings(BaseSettings):
-    # LLM (OpenAI-compatible proxy)
-    api_base: str = ""
-    api_key: str = ""
-    model: str = ""
-    temperature: float = 0.7
-
-    # Embedding — explicit backend + separate config for API/local modes
-    embedding_backend: str = ""  # api | local; empty keeps legacy inference
-    embedding_api_base: str = ""
-    embedding_api_key: str = ""
-    embedding_api_model: str = ""
-    local_embedding_model: str = ""
-    local_embedding_path: str = ""
-    embedding_model: str = ""  # deprecated fallback for EMBEDDING_MODEL
-
-    # DashScope ASR (speech-to-text, batch transcription)
-    dashscope_api_key: str = ""
-
-    # Copilot — 独立 LLM 配置（可选，不填则 fallback 到主 LLM）
-    copilot_api_base: str = ""
-    copilot_api_key: str = ""
-    copilot_model: str = ""
-    copilot_temperature: float = 0.3  # Copilot 场景偏确定性
-
-    # Copilot — 腾讯云 VPR 声纹识别（可选，未配置时自动回退手动按钮模式）
-    # 允许在用户 settings.json 中覆盖，此处为全局兜底
-    tencent_secret_id: str = ""
-    tencent_secret_key: str = ""
-    tencent_vpr_app_id: str = ""
-
-    # Copilot — Tavily Web Search
-    tavily_api_key: str = ""
-
-    # Alibaba Cloud OSS (only long-audio filetrans needs a public URL;
-    # short audio goes through base64 sync chat/completions, no OSS required).
-    aliyun_oss_access_key_id: str = ""
-    aliyun_oss_access_key_secret: str = ""
-    aliyun_oss_bucket: str = ""
-    aliyun_oss_endpoint: str = ""  # e.g. "oss-cn-shanghai.aliyuncs.com"
+    # No provider/service secrets live here. LLM, Embedding, DashScope, Tavily and
+    # OSS keys are all per-user (data/users/<id>/provider.json + voiceprint.json),
+    # resolved at request time by backend.llm_provider. The .env only carries the
+    # bootstrap config below — never an API key.
 
     # Paths
     base_dir: Path = Path(__file__).resolve().parent.parent
@@ -139,42 +104,9 @@ class Settings(BaseSettings):
         """Per-user LLM/Embedding provider overrides."""
         return self.user_data_dir(user_id) / "provider.json"
 
-    @property
-    def effective_dashscope_api_key(self) -> str:
-        """DashScope API key, with fallback to COPILOT_API_KEY when the Copilot
-        LLM is already pointed at DashScope's OpenAI-compatible endpoint.
-
-        Lets users reuse a single DashScope account key across LLM + ASR
-        without forcing them to duplicate it into two env vars.
-        """
-        if self.dashscope_api_key:
-            return self.dashscope_api_key
-        if self.copilot_api_key and "dashscope.aliyuncs.com" in (self.copilot_api_base or ""):
-            return self.copilot_api_key
-        return ""
-
-    def embedding_backend_mode(self) -> str:
-        return embedding_mode_of(self.embedding_backend, self.embedding_api_base, self.embedding_api_key)
-
-    def embedding_api_model_name(self) -> str:
-        return embedding_api_model_of(self.embedding_api_model, self.embedding_model)
-
-    def local_embedding_model_name(self) -> str:
-        return embedding_local_model_of(self.local_embedding_model, self.embedding_model)
-
-    def local_embedding_model_path(self) -> Path | None:
-        return embedding_local_path_of(
-            self.local_embedding_path, self.local_embedding_model, self.base_dir, self.embedding_model
-        )
-
-    def active_embedding_target(self) -> str:
-        return embedding_target_of(
-            self.embedding_backend, self.embedding_api_base, self.embedding_api_key,
-            self.embedding_api_model, self.local_embedding_model, self.local_embedding_path,
-            self.base_dir, self.embedding_model,
-        )
-
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # extra="ignore": pre-existing .env files still list the old provider keys
+    # (now per-user). Silently ignore them instead of failing to boot.
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

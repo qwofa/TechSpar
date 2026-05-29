@@ -14,7 +14,7 @@ import requests
 
 import oss2
 
-from backend.config import settings
+from backend.llm_provider import resolve_dashscope_key, resolve_oss_config
 
 logger = logging.getLogger("uvicorn")
 
@@ -43,7 +43,7 @@ def transcribe_short(audio_bytes: bytes, suffix: str = ".webm") -> str:
     适用于答题语音输入等 ≤5min / ≤7MB 的短片段，不依赖对象存储。
     超过限制请走 transcribe_long（长音频 filetrans 链路）。
     """
-    api_key = settings.effective_dashscope_api_key
+    api_key = resolve_dashscope_key()
     if not api_key:
         raise RuntimeError("DASHSCOPE_API_KEY not configured")
 
@@ -95,19 +95,20 @@ def _upload_to_oss(audio_bytes: bytes, suffix: str) -> str:
 
     Bucket can stay private — DashScope filetrans pulls via the signature.
     """
+    cfg = resolve_oss_config()
     missing = [
         name for name, val in (
-            ("ALIYUN_OSS_ACCESS_KEY_ID", settings.aliyun_oss_access_key_id),
-            ("ALIYUN_OSS_ACCESS_KEY_SECRET", settings.aliyun_oss_access_key_secret),
-            ("ALIYUN_OSS_BUCKET", settings.aliyun_oss_bucket),
-            ("ALIYUN_OSS_ENDPOINT", settings.aliyun_oss_endpoint),
+            ("ALIYUN_OSS_ACCESS_KEY_ID", cfg["access_key_id"]),
+            ("ALIYUN_OSS_ACCESS_KEY_SECRET", cfg["access_key_secret"]),
+            ("ALIYUN_OSS_BUCKET", cfg["bucket"]),
+            ("ALIYUN_OSS_ENDPOINT", cfg["endpoint"]),
         ) if not val
     ]
     if missing:
         raise RuntimeError(f"Alibaba OSS not configured: missing {', '.join(missing)}")
 
-    auth = oss2.Auth(settings.aliyun_oss_access_key_id, settings.aliyun_oss_access_key_secret)
-    bucket = oss2.Bucket(auth, settings.aliyun_oss_endpoint, settings.aliyun_oss_bucket)
+    auth = oss2.Auth(cfg["access_key_id"], cfg["access_key_secret"])
+    bucket = oss2.Bucket(auth, cfg["endpoint"], cfg["bucket"])
     key = f"audio/{uuid.uuid4().hex}{suffix}"
 
     bucket.put_object(key, audio_bytes)
@@ -123,7 +124,7 @@ def transcribe_long(audio_bytes: bytes, suffix: str = ".webm") -> str:
     给录音复盘场景用，可支持几十分钟~几小时的面试录音。
     短音频请优先用 transcribe_short（更快、零 OSS 依赖）。
     """
-    api_key = settings.effective_dashscope_api_key
+    api_key = resolve_dashscope_key()
     if not api_key:
         raise RuntimeError("DASHSCOPE_API_KEY not configured")
 

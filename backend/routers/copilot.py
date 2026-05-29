@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, We
 from langchain_core.messages import HumanMessage
 
 from backend.auth import get_current_user
-from backend.config import settings
+from backend.llm_provider import resolve_dashscope_key
 from backend.memory import llm_update_profile
 from backend.runtime import _copilot_sessions
 from backend.storage import copilot_preps as prep_store
@@ -261,13 +261,15 @@ async def _init_copilot_session(
         vp_enabled = bool(vp_client and vp_id)
 
     asr = None
-    if settings.effective_dashscope_api_key:
+    dashscope_key = resolve_dashscope_key(user_id)
+    if dashscope_key:
         try:
             from backend.copilot.asr_stream import CopilotASR
 
             loop = asyncio.get_event_loop()
             asr = CopilotASR(
                 loop,
+                api_key=dashscope_key,
                 voiceprint_client=vp_client if vp_enabled else None,
                 voice_print_id=vp_id if vp_enabled else None,
             )

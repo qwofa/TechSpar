@@ -3,7 +3,7 @@
 import json
 
 from backend.config import settings
-from backend.models import EmbeddingSettings, LLMSettings, UserSettings
+from backend.models import EmbeddingSettings, LLMSettings, ServiceSettings, UserSettings
 
 
 def load_user_provider(user_id: str) -> tuple[LLMSettings | None, EmbeddingSettings | None]:
@@ -18,17 +18,32 @@ def load_user_provider(user_id: str) -> tuple[LLMSettings | None, EmbeddingSetti
     return llm, embedding
 
 
-def save_user_provider(user_id: str, llm: LLMSettings, embedding: EmbeddingSettings):
+def load_user_services(user_id: str) -> ServiceSettings:
+    """Per-user optional service credentials (DashScope/Tavily/OSS). Empty when unset."""
+    path = settings.user_provider_path(user_id)
+    if not path.exists():
+        return ServiceSettings()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return ServiceSettings(**data["services"]) if data.get("services") else ServiceSettings()
+
+
+def save_user_provider(
+    user_id: str,
+    llm: LLMSettings,
+    embedding: EmbeddingSettings,
+    services: ServiceSettings | None = None,
+):
     path = settings.user_provider_path(user_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {"llm": llm.model_dump(), "embedding": embedding.model_dump()},
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    data = {"llm": llm.model_dump(), "embedding": embedding.model_dump()}
+    if services is not None:
+        data["services"] = services.model_dump()
+    elif path.exists():
+        # Preserve existing service creds when a caller only updates llm/embedding.
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        if existing.get("services"):
+            data["services"] = existing["services"]
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_user_settings(user_id: str) -> UserSettings:

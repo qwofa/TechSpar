@@ -7,7 +7,6 @@ from llama_index.core import (
     VectorStoreIndex,
     StorageContext,
     load_index_from_storage,
-    Settings as LlamaSettings,
 )
 
 from backend.config import settings
@@ -41,13 +40,6 @@ def save_topics(topics: dict, user_id: str):
 def get_topic_map(user_id: str) -> dict[str, str]:
     """Returns {key: dir_name}."""
     return {k: v["dir"] for k, v in load_topics(user_id).items()}
-
-
-def _init_llama_settings():
-    """Set LlamaIndex global defaults to the global (.env) provider — startup fallback
-    only. Per-user index ops below pass embed_model/llm explicitly and never rely on it."""
-    LlamaSettings.llm = get_llama_llm()
-    LlamaSettings.embed_model = get_embedding()
 
 
 def build_resume_index(user_id: str, force_rebuild: bool = False) -> VectorStoreIndex:

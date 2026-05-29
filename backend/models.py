@@ -162,7 +162,7 @@ class UserSettings(BaseModel):
 
 
 class LLMSettings(BaseModel):
-    """Global LLM provider configuration."""
+    """Per-user LLM provider configuration."""
     api_base: str = ""
     api_key: str = ""
     model: str = ""
@@ -170,13 +170,24 @@ class LLMSettings(BaseModel):
 
 
 class EmbeddingSettings(BaseModel):
-    """Global embedding provider configuration."""
+    """Per-user embedding provider configuration."""
     backend: str = ""  # api | local | "" (auto-infer from api_base/api_key)
     api_base: str = ""
     api_key: str = ""
     api_model: str = ""
     local_model: str = ""
     local_path: str = ""
+
+
+class ServiceSettings(BaseModel):
+    """Per-user optional service credentials. Each gates one feature; empty = that
+    feature stays off for this user (no global fallback)."""
+    dashscope_api_key: str = ""   # 语音输入 / 录音转写 / Copilot 实时 ASR
+    tavily_api_key: str = ""      # Copilot 联网搜索
+    oss_access_key_id: str = ""   # 录音复盘长音频上传（阿里云 OSS）
+    oss_access_key_secret: str = ""
+    oss_bucket: str = ""
+    oss_endpoint: str = ""
 
 
 class SystemSettings(BaseModel):
