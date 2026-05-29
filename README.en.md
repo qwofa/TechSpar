@@ -73,10 +73,10 @@ That is why the question bank is not a side feature here. It is core infrastruct
 
 Try it directly: **[https://aari.top/](https://aari.top/)**
 
-| Email | Password |
-| --- | --- |
-| admin@techspar.local | admin123 |
+**Register your own account** on the login page to start — each account's data is isolated. On first login a two-step wizard asks for **your own** LLM and Embedding API keys (the demo shares no keys, and never uses anyone else's).
 
+> No keys? You can run it for free: ModelScope `ZhipuAI/GLM-5` for the main LLM, SiliconFlow `BAAI/bge-large-zh-v1.5` for embedding — both offer free quota.
+>
 > Do not upload real resumes, real recordings, or sensitive personal information to the demo environment.
 
 ---
@@ -158,51 +158,7 @@ This means: **every training session changes the next one.**
 cp .env.example .env
 ```
 
-The minimum required configuration is **LLM + Embedding**. Embedding is not optional. Choose one of the following:
-
-- `EMBEDDING_BACKEND=api`: recommended default, using an OpenAI-compatible embedding API
-- `EMBEDDING_BACKEND=local`: local model mode, requiring extra dependencies
-
-The recommended default is `api`:
-
-```env
-API_BASE=https://your-llm-api-base/v1
-API_KEY=sk-your-api-key
-MODEL=your-model-name
-EMBEDDING_BACKEND=api
-EMBEDDING_API_BASE=https://your-embedding-api-base/v1
-EMBEDDING_API_KEY=sk-your-embedding-key
-EMBEDDING_API_MODEL=BAAI/bge-m3
-```
-
-If you use the official OpenAI embedding API, `EMBEDDING_API_BASE` can be left empty.
-
-If you only want to run the project first, you do not necessarily need to buy model service up front. A simple free example is:
-
-- Main LLM: ModelScope `ZhipuAI/GLM-5`
-- Embedding: SiliconFlow `BAAI/bge-large-zh-v1.5`
-
-Registration:
-
-- ModelScope: <https://modelscope.cn/home>
-- SiliconFlow: <https://cloud.siliconflow.cn/>
-
-Example configuration:
-
-```env
-API_BASE=https://api-inference.modelscope.cn/v1
-API_KEY=your-modelscope-sdk-token
-MODEL=ZhipuAI/GLM-5
-
-EMBEDDING_BACKEND=api
-EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
-EMBEDDING_API_KEY=sk-your-siliconflow-key
-EMBEDDING_API_MODEL=BAAI/bge-large-zh-v1.5
-```
-
-Use the ModelScope SDK Token for `API_KEY`, and the SiliconFlow API Key for `EMBEDDING_API_KEY`. The main LLM and embedding model can come from different providers.
-
-Default authentication values are:
+`.env` holds **no API keys** — only bootstrap settings (admin account, `JWT_SECRET`, whether registration is open, etc.):
 
 ```env
 JWT_SECRET=change-me-in-production
@@ -212,44 +168,24 @@ DEFAULT_NAME=admin
 ALLOW_REGISTRATION=false
 ```
 
-If you want local embedding, continue filling in `LOCAL_EMBEDDING_*` in `.env.example`.
+Every model and service key is **per-user**, entered in **Settings** after login. A two-step first-login wizard walks you through **LLM + Embedding** (Embedding is required — it vectorizes resume / knowledge base / memory):
 
-If you want to enable a dedicated Copilot model, realtime speech recognition, or web search, configure these optional values:
+- **LLM**: any OpenAI-compatible endpoint (API Base + Key + Model).
+- **Embedding**: `api` mode via a compatible endpoint, or `local` mode with a local HuggingFace model (needs `pip install -r requirements.local-embedding.txt`).
 
-```env
-COPILOT_API_BASE=
-COPILOT_API_KEY=
-COPILOT_MODEL=
-DASHSCOPE_API_KEY=
-TAVILY_API_KEY=
-```
+No keys? You can run it for free (both providers offer free quota, and they can differ):
 
-When `COPILOT_*` is empty, Copilot falls back to the main LLM. `DASHSCOPE_API_KEY` is used for three scenarios: **Copilot realtime speech recognition** (`qwen3-asr-flash-realtime`), **short voice input while answering** (synchronous base64 upload), and **long-audio transcription for recording review** (asynchronous filetrans). Without it, Copilot can only accept manually typed HR/interviewer questions. If left empty but `COPILOT_API_KEY` already points to DashScope, that key is reused automatically.
+- Main LLM: ModelScope `ZhipuAI/GLM-5`, base `https://api-inference.modelscope.cn/v1`, key = ModelScope SDK Token (<https://modelscope.cn/home>)
+- Embedding: SiliconFlow `BAAI/bge-large-zh-v1.5`, base `https://api.siliconflow.cn/v1`, key = SiliconFlow API Key (<https://cloud.siliconflow.cn/>)
 
-`DASHSCOPE_API_KEY` comes from Alibaba Cloud Bailian (DashScope): <https://bailian.console.aliyun.com/>. New users usually receive free quota, enough to try realtime speech recognition and recording transcription.
+**Optional services** are also per-user, filled under **Settings → Optional Services / Voiceprint** as needed (left blank = that feature stays off):
 
-`TAVILY_API_KEY` can be obtained from Tavily: <https://tavily.com/>. The free plan provides `1,000 credits` per month, enough to try web search.
+- **DashScope** (Alibaba Cloud Bailian, <https://bailian.console.aliyun.com/>, free quota): voice input while answering / recording-review transcription / Copilot realtime speech recognition.
+- **Tavily** (<https://tavily.com/>, `1,000 credits`/month free): Copilot web search for company intel.
+- **Alibaba Cloud OSS**: long-audio upload for recording review (short voice goes through the sync path, no OSS needed).
+- **Tencent Cloud VPR voiceprint** (<https://console.cloud.tencent.com/vpr>): Copilot auto-distinguishes HR vs. candidate voices; otherwise switch the role manually.
 
-If you want Copilot to **automatically distinguish HR/interviewer and candidate voices** using Tencent Cloud VPR voiceprint recognition, configure:
-
-```env
-TENCENT_SECRET_ID=
-TENCENT_SECRET_KEY=
-TENCENT_VPR_APP_ID=
-```
-
-`TENCENT_SECRET_ID` and `TENCENT_SECRET_KEY` can be created in Tencent Cloud CAM: <https://console.cloud.tencent.com/cam/capi>. `TENCENT_VPR_APP_ID` requires enabling the VPR service in the Tencent Cloud voiceprint console: <https://console.cloud.tencent.com/vpr>. Without these values, Copilot still works, but you need to manually switch the "HR / You" role during realtime interviews.
-
-If you want to enable **long-audio upload transcription for recording review**, configure Alibaba Cloud OSS. Short voice input uses the synchronous base64 path and does not need OSS:
-
-```env
-ALIYUN_OSS_ACCESS_KEY_ID=
-ALIYUN_OSS_ACCESS_KEY_SECRET=
-ALIYUN_OSS_BUCKET=
-ALIYUN_OSS_ENDPOINT=oss-cn-shanghai.aliyuncs.com
-```
-
-`.env.example` contains the complete example and can be edited directly.
+Copilot no longer has a separate model — it uses your main LLM.
 
 ### 2. Start with Docker
 
@@ -322,7 +258,7 @@ To avoid turning the document into an outdated snapshot, this section only keeps
 - `backend/storage/`: persistence for sessions, Copilot prep, and related data
 - `frontend/src/pages/`: pages for training, profile, graph, question bank, Copilot, settings, review, and more
 - `frontend/src/api/`, `frontend/src/contexts/`, `frontend/src/hooks/`: API wrappers, global state, and realtime interaction logic
-- `data/users/{user_id}/`: each user's profile, resume, knowledge base, question bank, and settings
+- `data/users/{user_id}/`: each user's profile, resume, knowledge base, question bank, settings, and their API keys (provider.json / voiceprint.json)
 - `docker-compose.yml`, `requirements*.txt`, `.env.example`: deployment and runtime entry points
 
 ---
@@ -342,7 +278,7 @@ python3 scripts/import_data.py techspar-backup-<timestamp>.tar.gz
 UI import assigns all archived data to the currently logged-in account, even if the original `user_id` is different. This is suitable for personal machine migration. CLI import preserves the original `user_id` by default, which is better for admin-level full-database migration.
 
 Packed content: `data/interviews.db` + `data/users/<user_id>/` (profile, resume, knowledge base, question bank, and training preferences).  
-Not packed: `.index_cache/` (rebuilt after import), `langgraph_checkpoints*` (runtime state), `.env` (API keys and other secrets must be synced manually).
+Not packed: `.index_cache/` (rebuilt after import), `langgraph_checkpoints*` (runtime state), `.env` (now only `JWT_SECRET`/admin account/bootstrap flags, synced manually; model keys live under `data/users/` and travel with the archive).
 
 Optional arguments:
 
