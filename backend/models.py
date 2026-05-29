@@ -199,9 +199,11 @@ class SettingsResponse(BaseModel):
     """Combined response for GET/PUT /settings."""
     llm: LLMSettings
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
+    services: ServiceSettings = Field(default_factory=ServiceSettings)
     system: SystemSettings = Field(default_factory=SystemSettings)
     training: UserSettings
     is_admin: bool = False  # GET-only; ignored on PUT
+    configured: dict[str, bool] = Field(default_factory=dict)  # GET-only: {llm, embedding}
 
 
 class VoiceprintCredentials(BaseModel):

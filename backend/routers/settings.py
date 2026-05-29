@@ -6,10 +6,11 @@ from fastapi import APIRouter, Depends
 
 from backend.auth import get_current_user, is_admin_user
 from backend.config import settings
-from backend.llm_provider import embedding_signature, reset_embedding_cache
+from backend.llm_provider import embedding_signature, provider_status, reset_embedding_cache
 from backend.models import EmbeddingSettings, LLMSettings, SettingsResponse, SystemSettings
 from backend.storage.user_settings import (
     load_user_provider,
+    load_user_services,
     load_user_settings,
     save_user_provider,
     save_user_settings,
@@ -27,14 +28,17 @@ def get_user_settings(user_id: str = Depends(get_current_user)):
     llm_override, emb_override = load_user_provider(user_id)
     llm = llm_override or LLMSettings()
     embedding = emb_override or EmbeddingSettings()
+    services = load_user_services(user_id)
     system = SystemSettings(allow_registration=settings.allow_registration)
     training = load_user_settings(user_id)
     return SettingsResponse(
         llm=llm,
         embedding=embedding,
+        services=services,
         system=system,
         training=training,
         is_admin=is_admin_user(user_id),
+        configured=provider_status(user_id),
     )
 
 
@@ -47,7 +51,7 @@ def put_user_settings(payload: SettingsResponse, user_id: str = Depends(get_curr
     POST /settings/rebuild-index. Returns embedding_changed so the UI can warn."""
     old_emb_sig = embedding_signature(user_id)
 
-    save_user_provider(user_id, payload.llm, payload.embedding)
+    save_user_provider(user_id, payload.llm, payload.embedding, payload.services)
     # Drop the cached client so the next call picks up the new key/base/model.
     reset_embedding_cache(user_id)
 

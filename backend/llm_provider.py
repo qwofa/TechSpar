@@ -228,3 +228,15 @@ def resolve_oss_config(user_id: str | None = None) -> dict:
         "bucket": s.oss_bucket if s else "",
         "endpoint": s.oss_endpoint if s else "",
     }
+
+
+def provider_status(user_id: str | None = None) -> dict:
+    """Whether the user has the two essentials configured. Drives the first-run
+    onboarding gate (DashScope/Tavily/OSS are optional and not checked here)."""
+    llm = resolve_llm_config(user_id)
+    emb = resolve_embedding_config(user_id)
+    if embedding_mode_of(emb["backend"], emb["api_base"], emb["api_key"]) == "api":
+        emb_ok = bool(emb["api_key"])
+    else:
+        emb_ok = bool(emb["local_model"] or emb["local_path"])
+    return {"llm": bool(llm["api_key"] and llm["model"]), "embedding": emb_ok}
