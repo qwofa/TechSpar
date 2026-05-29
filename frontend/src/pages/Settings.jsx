@@ -16,6 +16,7 @@ import {
   Boxes,
   UserCog,
   RotateCw,
+  KeyRound,
 } from "lucide-react";
 import { getSettings, updateSettings, rebuildEmbeddingIndex } from "../api/interview";
 import {
@@ -121,6 +122,17 @@ export default function Settings() {
   const [embLocalPath, setEmbLocalPath] = useState("");
   const [showEmbKey, setShowEmbKey] = useState(false);
 
+  // 可选服务密钥（每用户，对应功能开关）
+  const [dashscopeKey, setDashscopeKey] = useState("");
+  const [tavilyKey, setTavilyKey] = useState("");
+  const [ossKeyId, setOssKeyId] = useState("");
+  const [ossKeySecret, setOssKeySecret] = useState("");
+  const [ossBucket, setOssBucket] = useState("");
+  const [ossEndpoint, setOssEndpoint] = useState("");
+  const [showDashscope, setShowDashscope] = useState(false);
+  const [showTavily, setShowTavily] = useState(false);
+  const [showOssSecret, setShowOssSecret] = useState(false);
+
   // 账户/系统配置（全局，仅 admin 可见）
   const [allowRegistration, setAllowRegistration] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -158,6 +170,7 @@ export default function Settings() {
   // Section refs for scrollspy
   const llmRef = useRef(null);
   const embeddingRef = useRef(null);
+  const servicesRef = useRef(null);
   const voiceprintRef = useRef(null);
   const trainingRef = useRef(null);
   const accountRef = useRef(null);
@@ -165,6 +178,7 @@ export default function Settings() {
   const sectionRefs = {
     llm: llmRef,
     embedding: embeddingRef,
+    services: servicesRef,
     voiceprint: voiceprintRef,
     training: trainingRef,
     account: accountRef,
@@ -197,6 +211,13 @@ export default function Settings() {
         setEmbApiModel(emb.api_model || "");
         setEmbLocalModel(emb.local_model || "");
         setEmbLocalPath(emb.local_path || "");
+        const svc = data.services || {};
+        setDashscopeKey(svc.dashscope_api_key || "");
+        setTavilyKey(svc.tavily_api_key || "");
+        setOssKeyId(svc.oss_access_key_id || "");
+        setOssKeySecret(svc.oss_access_key_secret || "");
+        setOssBucket(svc.oss_bucket || "");
+        setOssEndpoint(svc.oss_endpoint || "");
         setAllowRegistration(Boolean(data.system?.allow_registration));
         setIsAdmin(Boolean(data.is_admin));
         setNumQuestions(data.training.num_questions ?? 10);
@@ -438,6 +459,14 @@ export default function Settings() {
           local_model: embLocalModel,
           local_path: embLocalPath,
         },
+        services: {
+          dashscope_api_key: dashscopeKey,
+          tavily_api_key: tavilyKey,
+          oss_access_key_id: ossKeyId,
+          oss_access_key_secret: ossKeySecret,
+          oss_bucket: ossBucket,
+          oss_endpoint: ossEndpoint,
+        },
         system: { allow_registration: allowRegistration },
         training: { num_questions: numQuestions, divergence },
       });
@@ -484,6 +513,7 @@ export default function Settings() {
   const TABS = [
     { id: "llm", label: "LLM 服务", icon: Server },
     { id: "embedding", label: "Embedding", icon: Boxes },
+    { id: "services", label: "可选服务", icon: KeyRound },
     { id: "voiceprint", label: "声纹识别", icon: Mic },
     { id: "training", label: "训练参数", icon: Sliders },
     ...(isAdmin ? [{ id: "account", label: "账户", icon: UserCog }] : []),
@@ -539,14 +569,14 @@ export default function Settings() {
               <Server size={16} className="text-primary" />
               <span className="text-base font-semibold">LLM 服务配置</span>
             </div>
-            <div className="text-[13px] text-dim mb-6">你的专属配置，仅对你生效；留空的字段沿用系统全局默认。更改后立即生效。</div>
+            <div className="text-[13px] text-dim mb-6">你自己的 LLM，仅对你生效。系统不提供共享 key，这里必须填你自己的；更改后立即生效。</div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label className={labelClass}>API Base URL</Label>
                 <Input
                   className={inputClass}
-                  placeholder="留空继承全局，例 https://api.openai.com/v1"
+                  placeholder="例：https://api.openai.com/v1"
                   value={apiBase}
                   onChange={(e) => setApiBase(e.target.value)}
                 />
@@ -555,7 +585,7 @@ export default function Settings() {
                 <Label className={labelClass}>Model</Label>
                 <Input
                   className={inputClass}
-                  placeholder="留空继承全局，例 gpt-4o"
+                  placeholder="例：gpt-4o"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                 />
@@ -569,7 +599,7 @@ export default function Settings() {
                   <Input
                     className={cn(inputClass, "pr-11")}
                     type={showKey ? "text" : "password"}
-                    placeholder="留空继承全局，sk-..."
+                    placeholder="sk-...（你自己的 key）"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                   />
@@ -606,7 +636,7 @@ export default function Settings() {
               <span className="text-base font-semibold">Embedding 模型</span>
             </div>
             <div className="text-[13px] text-dim mb-6">
-              你的专属配置，仅对你生效；留空继承全局默认。用于题库 / 简历 / 知识库的向量化。
+              你自己的 Embedding，仅对你生效；用于题库 / 简历 / 知识库的向量化，必须配置。
               <span className="text-amber-500/90">更换模型后请点下方「更新向量索引」重建（会清空并重算向量，历史会话记忆向量无法恢复）。</span>
             </div>
 
@@ -751,6 +781,108 @@ export default function Settings() {
                   更换 Embedding 模型并保存后，点此用新模型重建简历 / 知识库 / 记忆向量
                 </span>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Optional service keys (per-user; each gates one feature) */}
+        <Card ref={servicesRef} data-tab-id="services" className="overflow-hidden border-border/40 bg-card/40 scroll-mt-4">
+          <CardContent className="p-5 md:p-7">
+            <div className="flex items-center gap-2 mb-1">
+              <KeyRound size={16} className="text-primary" />
+              <span className="text-base font-semibold">可选服务密钥</span>
+            </div>
+            <div className="text-[13px] text-dim mb-6">
+              按需填写，各自启用对应功能；不填则该功能关闭。均为你的专属配置，仅对你生效。
+            </div>
+
+            <div className="space-y-6">
+              {/* DashScope */}
+              <div className="space-y-2">
+                <Label className={labelClass}>DashScope API Key</Label>
+                <div className="relative">
+                  <Input
+                    className={cn(inputClass, "pr-11")}
+                    type={showDashscope ? "text" : "password"}
+                    placeholder="sk-...（语音输入 / 录音转写 / Copilot 实时识别）"
+                    value={dashscopeKey}
+                    onChange={(e) => setDashscopeKey(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-dim hover:text-text transition-colors"
+                    onClick={() => setShowDashscope((v) => !v)}
+                  >
+                    {showDashscope ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div className="text-[12px] text-dim/70">阿里云百炼（DashScope）。不填则语音相关功能不可用。</div>
+              </div>
+
+              {/* Tavily */}
+              <div className="space-y-2 border-t border-border/40 pt-5">
+                <Label className={labelClass}>Tavily API Key</Label>
+                <div className="relative">
+                  <Input
+                    className={cn(inputClass, "pr-11")}
+                    type={showTavily ? "text" : "password"}
+                    placeholder="tvly-...（Copilot 联网搜索公司情报）"
+                    value={tavilyKey}
+                    onChange={(e) => setTavilyKey(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-dim hover:text-text transition-colors"
+                    onClick={() => setShowTavily((v) => !v)}
+                  >
+                    {showTavily ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div className="text-[12px] text-dim/70">不填则 Copilot 跳过公司联网情报。</div>
+              </div>
+
+              {/* OSS */}
+              <div className="space-y-4 border-t border-border/40 pt-5">
+                <div>
+                  <div className="text-sm font-medium">阿里云 OSS（录音复盘长音频上传）</div>
+                  <div className="text-[12px] text-dim/70 mt-1">仅录音复盘上传长音频需要；答题短语音不需要。</div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Access Key Id</Label>
+                    <Input className={inputClass} placeholder="LTAI..." value={ossKeyId} onChange={(e) => setOssKeyId(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Bucket</Label>
+                    <Input className={inputClass} placeholder="my-bucket" value={ossBucket} onChange={(e) => setOssBucket(e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Access Key Secret</Label>
+                    <div className="relative">
+                      <Input
+                        className={cn(inputClass, "pr-11")}
+                        type={showOssSecret ? "text" : "password"}
+                        placeholder="••••••"
+                        value={ossKeySecret}
+                        onChange={(e) => setOssKeySecret(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-dim hover:text-text transition-colors"
+                        onClick={() => setShowOssSecret((v) => !v)}
+                      >
+                        {showOssSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Endpoint</Label>
+                    <Input className={inputClass} placeholder="oss-cn-shanghai.aliyuncs.com" value={ossEndpoint} onChange={(e) => setOssEndpoint(e.target.value)} />
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1100,8 +1232,8 @@ export default function Settings() {
           ) : (
             <span className="text-[12px] text-dim/70">
               {isAdmin
-                ? "保存 LLM + Embedding + 训练参数 + 账户。声纹与数据迁移各自独立保存。"
-                : "保存 LLM + Embedding + 训练参数。声纹与数据迁移各自独立保存。"}
+                ? "保存 LLM + Embedding + 服务密钥 + 训练参数 + 账户。声纹与数据迁移各自独立保存。"
+                : "保存 LLM + Embedding + 服务密钥 + 训练参数。声纹与数据迁移各自独立保存。"}
             </span>
           )}
           <Button variant="gradient" className="px-8" onClick={handleSave} disabled={saving}>
