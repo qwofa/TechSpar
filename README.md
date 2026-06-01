@@ -292,3 +292,7 @@ UI 导入会把归档中的数据全部归到当前登录账户（即使原 `use
 ## License
 
 CC BY-NC 4.0
+
+## 致谢
+
+感谢 [LINUX DO](https://linux.do/) 社区的支持。
