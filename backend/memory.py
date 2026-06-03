@@ -638,13 +638,13 @@ def _apply_behavior_ops(profile: dict, ops: list, session_id: str | None, now: s
             # ADD on existing id is degraded to UPDATE
             existing["times_seen"] = existing.get("times_seen", 0) + 1
             existing["last_seen"] = now
+            snippet = (op.get("snippet") or "").strip()
             if existing.get("improved"):
                 existing["improved"] = False
-                existing.setdefault("history", []).append({
-                    "date": now,
-                    "event": "regressed",
-                })
-            snippet = (op.get("snippet") or "").strip()
+                regressed_event = {"date": now, "event": "regressed"}
+                if snippet:
+                    regressed_event["evidence"] = snippet
+                existing.setdefault("history", []).append(regressed_event)
             if snippet:
                 examples = existing.setdefault("examples", [])
                 examples.append({
@@ -671,6 +671,23 @@ def _apply_behavior_ops(profile: dict, ops: list, session_id: str | None, now: s
             tally["rejected"] += 1
 
     return tally
+
+
+def _regress_if_improved(wp: dict, now: str, evidence: str = "") -> bool:
+    """Flip a previously-improved weak point back to active when it resurfaces.
+
+    Knowledge gaps were one-way latched (improved could never revert), unlike
+    behavior_signals. This mirrors that regression path: a "fixed" gap observed
+    again is no longer fixed. Returns True if a regression was recorded.
+    """
+    if not wp.get("improved"):
+        return False
+    wp["improved"] = False
+    event = {"date": now, "event": "regressed"}
+    if evidence:
+        event["evidence"] = evidence
+    wp.setdefault("history", []).append(event)
+    return True
 
 
 def _apply_memory_ops(profile: dict, ops: dict, topic: str | None, now: str, user_id: str = "",
@@ -720,6 +737,7 @@ def _apply_memory_ops(profile: dict, ops: dict, topic: str | None, now: str, use
                     wp["archived"] = False
                     wp.pop("archived_at", None)
                     wp.setdefault("history", []).append({"date": now, "event": "unarchived"})
+                _regress_if_improved(wp, now, evidence=new_text or wp.get("point", ""))
 
     for imp in ops.get("improvements", []):
         idx = imp.get("weak_index")
@@ -760,6 +778,7 @@ def _deterministic_update(profile: dict, new_weak: list, new_strong: list,
                 matched["archived"] = False
                 matched.pop("archived_at", None)
                 matched.setdefault("history", []).append({"date": now, "event": "unarchived"})
+            _regress_if_improved(matched, now, evidence=point)
         else:
             profile.setdefault("weak_points", []).append({
                 "point": point,
