@@ -378,64 +378,6 @@ def get_topic_context_for_drill(topic: str, user_id: str) -> dict:
     }
 
 
-async def update_profile_realtime(
-    mode: str,
-    topic: str | None,
-    user_id: str,
-    score_entry: dict | None = None,
-    weak_point: str | None = None,
-):
-    """Lightweight per-answer profile update — no LLM call, just save the data."""
-    async with _get_profile_lock(user_id):
-        profile = _load_profile(user_id)
-        now = datetime.now().isoformat()
-
-        # Record score
-        if score_entry and score_entry.get("score") is not None:
-            history = profile.setdefault("stats", {}).setdefault("score_history", [])
-            history.append({
-                "date": now[:10],
-                "mode": mode,
-                "topic": topic,
-                "avg_score": score_entry["score"],
-                "question": score_entry.get("question", ""),
-                "assessment": score_entry.get("assessment", ""),
-            })
-            # Rolling average
-            recent = [h["avg_score"] for h in history[-30:] if h.get("avg_score")]
-            if recent:
-                profile["stats"]["avg_score"] = round(sum(recent) / len(recent), 1)
-
-        # Record weak point (semantic matching)
-        if weak_point:
-            from backend.vector_memory import find_similar_weak_point
-            match_idx = find_similar_weak_point(weak_point, profile.get("weak_points", []), user_id=user_id)
-            if match_idx is not None:
-                matched = profile["weak_points"][match_idx]
-                matched["times_seen"] = matched.get("times_seen", 1) + 1
-                matched["last_seen"] = now
-                if matched.get("archived"):
-                    matched["archived"] = False
-                    matched.pop("archived_at", None)
-                    matched.setdefault("history", []).append({"date": now, "event": "unarchived"})
-            else:
-                profile.setdefault("weak_points", []).append({
-                    "point": weak_point,
-                    "topic": topic or "",
-                    "source": "observed",
-                    "first_seen": now,
-                    "last_seen": now,
-                    "times_seen": 1,
-                    "improved": False,
-                })
-
-        # Track that we have activity (for profile page display)
-        profile.setdefault("stats", {}).setdefault("total_answers", 0)
-        profile["stats"]["total_answers"] = profile["stats"].get("total_answers", 0) + 1
-
-        _save_profile(profile, user_id)
-
-
 def _active_knowledge_weak_points(profile: dict) -> list[dict]:
     """Knowledge-axis weak points only. Filters out improved, archived, and legacy axis=performance."""
     return [
