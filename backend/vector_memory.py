@@ -61,9 +61,9 @@ def init_memory_table():
 
 # ── Embedding helpers ──
 
-def _embed(text: str) -> np.ndarray:
-    """Embed text and return a float32 vector."""
-    embed_model = get_embedding()
+def _embed(text: str, user_id: str) -> np.ndarray:
+    """Embed text with the user's embedding model and return a float32 vector."""
+    embed_model = get_embedding(user_id)
     vec = embed_model.get_text_embedding(text)
     return np.array(vec, dtype=np.float32)
 
@@ -78,6 +78,14 @@ def _deserialize(blob: bytes) -> np.ndarray:
 
 def _cosine_similarity(query_vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
     """Vectorized cosine similarity. query_vec: (D,), matrix: (N, D) → (N,)."""
+    # Stale rows embedded with a different model have a different dimension. Treat
+    # them as no-match instead of crashing — they'll be cleared on the next rebuild.
+    if matrix.ndim != 2 or matrix.shape[1] != query_vec.shape[0]:
+        logger.warning(
+            "Embedding dim mismatch (query=%s, stored=%s) — returning no-match; rebuild the index.",
+            query_vec.shape[0], None if matrix.ndim != 2 else matrix.shape[1],
+        )
+        return np.zeros(matrix.shape[0])
     query_norm = np.linalg.norm(query_vec)
     if query_norm < 1e-10:
         return np.zeros(matrix.shape[0])
@@ -129,7 +137,7 @@ def index_session_memory(
         return
 
     # Batch embed
-    embed_model = get_embedding()
+    embed_model = get_embedding(user_id)
     texts = [c[1] for c in chunks]
     vectors = embed_model.get_text_embedding_batch(texts)
 
@@ -181,7 +189,7 @@ def search_memory(
         return []
 
     # Embed query
-    query_vec = _embed(query)
+    query_vec = _embed(query, user_id)
 
     # Build matrix and compute similarities
     embeddings = np.stack([_deserialize(r["embedding"]) for r in rows])
@@ -229,7 +237,7 @@ def find_similar_weak_point(
         cached[r["content"]] = _deserialize(r["embedding"])
 
     # Embed the new point
-    new_vec = _embed(new_point)
+    new_vec = _embed(new_point, user_id)
 
     # Compare against each existing profile weak point
     best_idx = None
@@ -253,7 +261,7 @@ def find_similar_weak_point(
 
     # Embed any uncached points
     if points_to_embed:
-        embed_model = get_embedding()
+        embed_model = get_embedding(user_id)
         vecs = embed_model.get_text_embedding_batch(points_to_embed)
         for text, vec, idx in zip(points_to_embed, vecs, points_indices):
             vec_np = np.array(vec, dtype=np.float32)
@@ -283,7 +291,7 @@ def get_cached_embedding(text: str, chunk_type: str, user_id: str) -> np.ndarray
 def cache_embedding(text: str, chunk_type: str, user_id: str, vec: np.ndarray | None = None):
     """Store an embedding in the DB. Embeds the text if vec is not provided."""
     if vec is None:
-        vec = _embed(text)
+        vec = _embed(text, user_id)
     conn = _get_conn()
     blob = _serialize(vec)
     conn.execute(
@@ -319,7 +327,7 @@ def find_similar_cached(
 
     new_vec = get_cached_embedding(new_text, chunk_type, user_id)
     if new_vec is None:
-        new_vec = _embed(new_text)
+        new_vec = _embed(new_text, user_id)
 
     # Collect embeddings for existing items, hitting cache first
     vecs = []
@@ -336,7 +344,7 @@ def find_similar_cached(
 
     # Batch embed uncached items and store them
     if uncached_texts:
-        embed_model = get_embedding()
+        embed_model = get_embedding(user_id)
         batch_vecs = embed_model.get_text_embedding_batch(uncached_texts)
         conn = _get_conn()
         now = datetime.now().isoformat()
@@ -366,7 +374,7 @@ def upsert_weak_point_vector(old_text: str, new_text: str, topic: str | None, us
         (old_text, user_id),
     )
     # Insert new entry
-    vec = _embed(new_text)
+    vec = _embed(new_text, user_id)
     blob = _serialize(vec)
     meta = json.dumps({"topic": topic or ""})
     conn.execute(
@@ -379,6 +387,16 @@ def upsert_weak_point_vector(old_text: str, new_text: str, topic: str | None, us
 
 
 # ── Maintenance ──
+
+def clear_user_vectors(user_id: str):
+    """Delete all of a user's memory vectors. Used when their embedding model changes
+    (old BLOBs become dimension-incompatible with the new model)."""
+    conn = _get_conn()
+    conn.execute("DELETE FROM memory_vectors WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    logger.info(f"Cleared memory_vectors for user {user_id}.")
+
 
 def rebuild_index_from_profile(user_id: str):
     """Rebuild weak_point vectors from current profile.json."""
@@ -395,7 +413,7 @@ def rebuild_index_from_profile(user_id: str):
         conn.close()
         return
 
-    embed_model = get_embedding()
+    embed_model = get_embedding(user_id)
     texts = [wp["point"] for wp in weak_points if wp.get("point")]
     if not texts:
         conn.close()

@@ -1,12 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Server, Sliders, Eye, EyeOff, Loader2, Check, Mic, Square, Trash2 } from "lucide-react";
-import { getSettings, updateSettings } from "../api/interview";
+import {
+  Server,
+  Sliders,
+  Eye,
+  EyeOff,
+  Loader2,
+  Check,
+  Mic,
+  Square,
+  Trash2,
+  Database,
+  Download,
+  Upload,
+  AlertTriangle,
+  Boxes,
+  UserCog,
+  RotateCw,
+  KeyRound,
+} from "lucide-react";
+import { getSettings, updateSettings, rebuildEmbeddingIndex } from "../api/interview";
 import {
   getVoiceprintStatus,
   putVoiceprintCredentials,
   enrollVoiceprint,
   deleteVoiceprintEnrollment,
 } from "../api/voiceprint";
+import { exportData, importData } from "../api/dataMigration";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,10 +112,44 @@ export default function Settings() {
   const [numQuestions, setNumQuestions] = useState(10);
   const [divergence, setDivergence] = useState(3);
   const [showKey, setShowKey] = useState(false);
+
+  // Embedding 配置（每用户，hot-reload；空字段继承全局默认）
+  const [embBackend, setEmbBackend] = useState("");  // "" | api | local
+  const [embApiBase, setEmbApiBase] = useState("");
+  const [embApiKey, setEmbApiKey] = useState("");
+  const [embApiModel, setEmbApiModel] = useState("");
+  const [embApiBatchSize, setEmbApiBatchSize] = useState(10);
+  const [embLocalModel, setEmbLocalModel] = useState("");
+  const [embLocalPath, setEmbLocalPath] = useState("");
+  const [showEmbKey, setShowEmbKey] = useState(false);
+
+  // 可选服务密钥（每用户，对应功能开关）
+  const [dashscopeKey, setDashscopeKey] = useState("");
+  const [tavilyKey, setTavilyKey] = useState("");
+  const [ossKeyId, setOssKeyId] = useState("");
+  const [ossKeySecret, setOssKeySecret] = useState("");
+  const [ossBucket, setOssBucket] = useState("");
+  const [ossEndpoint, setOssEndpoint] = useState("");
+  const [showDashscope, setShowDashscope] = useState(false);
+  const [showTavily, setShowTavily] = useState(false);
+  const [showOssSecret, setShowOssSecret] = useState(false);
+
+  // 账户/系统配置（全局，仅 admin 可见）
+  const [allowRegistration, setAllowRegistration] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // 重建向量索引（手动按钮；换 embedding 后弹警告提醒）
+  const [needsReindex, setNeedsReindex] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexDone, setReindexDone] = useState(false);
+  const [reindexError, setReindexError] = useState("");
+  const [reindexProgress, setReindexProgress] = useState(null); // { completed, total, label, status }
+  const [lastReindexAt, setLastReindexAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("llm");
 
   // 声纹识别状态
   const [vpStatus, setVpStatus] = useState({ configured: false, enrolled: false });
@@ -117,6 +170,36 @@ export default function Settings() {
   const vpInputRateRef = useRef(VP_SAMPLE_RATE);
   const vpTimerRef = useRef(null);
 
+  // Section refs for scrollspy
+  const llmRef = useRef(null);
+  const embeddingRef = useRef(null);
+  const servicesRef = useRef(null);
+  const voiceprintRef = useRef(null);
+  const trainingRef = useRef(null);
+  const accountRef = useRef(null);
+  const migrationRef = useRef(null);
+  const sectionRefs = {
+    llm: llmRef,
+    embedding: embeddingRef,
+    services: servicesRef,
+    voiceprint: voiceprintRef,
+    training: trainingRef,
+    account: accountRef,
+    migration: migrationRef,
+  };
+  const scrollSpyLock = useRef(0);
+
+  // 数据迁移状态
+  const [exporting, setExporting] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importDbStrategy, setImportDbStrategy] = useState("skip");
+  const [importOverwriteFiles, setImportOverwriteFiles] = useState(false);
+  const [importConfirming, setImportConfirming] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [migrationMessage, setMigrationMessage] = useState("");
+  const [migrationError, setMigrationError] = useState("");
+  const importFileInputRef = useRef(null);
+
   useEffect(() => {
     getSettings()
       .then((data) => {
@@ -124,6 +207,24 @@ export default function Settings() {
         setApiKey(data.llm.api_key || "");
         setModel(data.llm.model || "");
         setTemperature(data.llm.temperature ?? 0.7);
+        const emb = data.embedding || {};
+        setEmbBackend(emb.backend || "");
+        setEmbApiBase(emb.api_base || "");
+        setEmbApiKey(emb.api_key || "");
+        setEmbApiModel(emb.api_model || "");
+        setEmbApiBatchSize(emb.api_batch_size ?? 10);
+        setEmbLocalModel(emb.local_model || "");
+        setEmbLocalPath(emb.local_path || "");
+        const svc = data.services || {};
+        setDashscopeKey(svc.dashscope_api_key || "");
+        setTavilyKey(svc.tavily_api_key || "");
+        setOssKeyId(svc.oss_access_key_id || "");
+        setOssKeySecret(svc.oss_access_key_secret || "");
+        setOssBucket(svc.oss_bucket || "");
+        setOssEndpoint(svc.oss_endpoint || "");
+        setAllowRegistration(Boolean(data.system?.allow_registration));
+        setIsAdmin(Boolean(data.is_admin));
+        setLastReindexAt(data.last_reindex_at || "");
         setNumQuestions(data.training.num_questions ?? 10);
         setDivergence(data.training.divergence ?? 3);
       })
@@ -153,6 +254,47 @@ export default function Settings() {
   }, []);
 
   useEffect(() => () => cleanupRecorder(), [cleanupRecorder]);
+
+  // ScrollSpy: highlight tab whose section is most prominent in the viewport
+  useEffect(() => {
+    if (loading) return;
+    const anyEl = llmRef.current;
+    if (!anyEl) return;
+    const scroller = anyEl.closest("main") || null;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (Date.now() < scrollSpyLock.current) return;
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length === 0) return;
+        const id = visible[0].target.getAttribute("data-tab-id");
+        if (id) setActiveTab(id);
+      },
+      {
+        root: scroller,
+        rootMargin: "-15% 0px -55% 0px",
+        threshold: 0,
+      }
+    );
+
+    Object.values(sectionRefs).forEach((ref) => {
+      if (ref.current) observer.observe(ref.current);
+    });
+
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  const handleTabClick = (id) => {
+    setActiveTab(id);
+    const el = sectionRefs[id]?.current;
+    if (!el) return;
+    // Suppress scrollspy briefly while the smooth scroll plays out
+    scrollSpyLock.current = Date.now() + 700;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const handleSaveVpCredentials = async () => {
     setVpBusy(true);
@@ -257,20 +399,119 @@ export default function Settings() {
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    setMigrationError("");
+    setMigrationMessage("");
+    try {
+      const { filename, size } = await exportData();
+      const sizeMb = (size / 1024 / 1024).toFixed(2);
+      setMigrationMessage(`已下载 ${filename} (${sizeMb} MB)`);
+    } catch (err) {
+      setMigrationError("导出失败：" + (err.message || "未知错误"));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportFileChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setImportFile(f);
+    setImportConfirming(false);
+    setMigrationMessage("");
+    setMigrationError("");
+  };
+
+  const handleImportClick = () => {
+    if (!importFile) return;
+    setImportConfirming(true);
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importFile) return;
+    setImportBusy(true);
+    setMigrationError("");
+    setMigrationMessage("");
+    try {
+      const r = await importData(importFile, {
+        dbStrategy: importDbStrategy,
+        overwriteFiles: importOverwriteFiles,
+      });
+      setMigrationMessage(
+        `已导入：会话写入/更新 ${r.db_inserted} 条，跳过 ${r.db_skipped} 条；文件复制 ${r.files_copied} 个，跳过 ${r.files_skipped} 个。建议刷新页面以加载新数据。`
+      );
+      setImportFile(null);
+      setImportConfirming(false);
+      if (importFileInputRef.current) importFileInputRef.current.value = "";
+    } catch (err) {
+      setMigrationError("导入失败：" + (err.message || "未知错误"));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError("");
     try {
-      await updateSettings({
+      const res = await updateSettings({
         llm: { api_base: apiBase, api_key: apiKey, model, temperature },
+        embedding: {
+          backend: embBackend,
+          api_base: embApiBase,
+          api_key: embApiKey,
+          api_model: embApiModel,
+          api_batch_size: embApiBatchSize,
+          local_model: embLocalModel,
+          local_path: embLocalPath,
+        },
+        services: {
+          dashscope_api_key: dashscopeKey,
+          tavily_api_key: tavilyKey,
+          oss_access_key_id: ossKeyId,
+          oss_access_key_secret: ossKeySecret,
+          oss_bucket: ossBucket,
+          oss_endpoint: ossEndpoint,
+        },
+        system: { allow_registration: allowRegistration },
         training: { num_questions: numQuestions, divergence },
       });
+      if (res?.embedding_changed) {
+        setNeedsReindex(true);
+        setReindexDone(false);
+        setReindexError("");
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       setError("保存失败: " + err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRebuildIndex = async () => {
+    setReindexing(true);
+    setReindexError("");
+    setReindexDone(false);
+    setReindexProgress(null);
+    try {
+      await rebuildEmbeddingIndex({
+        onProgress: (p) => setReindexProgress(p),
+        onDone: (d) => {
+          setNeedsReindex(false);
+          setReindexProgress(null);
+          setReindexDone(true);
+          setLastReindexAt(d.last_rebuild_at || "");
+          setTimeout(() => setReindexDone(false), 3000);
+        },
+        onError: (e) => setReindexError("重建失败: " + e.message),
+      });
+    } catch (err) {
+      setReindexError("重建失败: " + err.message);
+    } finally {
+      setReindexing(false);
+      setReindexProgress(null);
     }
   };
 
@@ -285,22 +526,66 @@ export default function Settings() {
   const labelClass = "text-[11px] font-semibold uppercase tracking-[0.18em] text-dim/80";
   const inputClass = "h-12 rounded-2xl bg-card/90";
 
+  const TABS = [
+    { id: "llm", label: "LLM 服务", icon: Server },
+    { id: "embedding", label: "Embedding", icon: Boxes },
+    { id: "services", label: "可选服务", icon: KeyRound },
+    { id: "voiceprint", label: "声纹识别", icon: Mic },
+    { id: "training", label: "训练参数", icon: Sliders },
+    ...(isAdmin ? [{ id: "account", label: "账户", icon: UserCog }] : []),
+    { id: "migration", label: "数据迁移", icon: Database },
+  ];
+
   return (
-    <div className="flex-1 w-full max-w-[700px] mx-auto px-4 py-6 md:px-7 md:py-8">
-      <div className="mb-8">
+    <div className="flex-1 w-full max-w-[1080px] mx-auto px-4 pt-6 pb-0 md:px-7 md:pt-8">
+      <div className="mb-7">
         <div className="text-2xl md:text-[28px] font-display font-bold">设置</div>
         <div className="text-sm text-dim mt-1">配置 LLM 服务和训练参数</div>
       </div>
 
-      <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
+        {/* Left Tab Rail */}
+        <nav className="lg:sticky lg:top-4 lg:self-start">
+          <div className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-0.5 lg:overflow-visible">
+            {TABS.map((tab) => {
+              const { id, label } = tab;
+              const Icon = tab.icon;
+              const active = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => handleTabClick(id)}
+                  className={cn(
+                    "group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[13px] transition-all duration-300 shrink-0 lg:w-full",
+                    active
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-dim hover:text-text hover:bg-hover"
+                  )}
+                >
+                  {active && (
+                    <div className="absolute left-0 top-1/2 hidden h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary drop-shadow-[0_0_4px_currentColor] lg:block" />
+                  )}
+                  <Icon
+                    size={16}
+                    className={cn("shrink-0", active ? "text-primary" : "text-dim group-hover:text-primary")}
+                  />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* Right Content Pane */}
+        <div className="min-w-0 space-y-5">
         {/* LLM Provider */}
-        <Card className="overflow-hidden border-border/80 bg-card/76">
+        <Card ref={llmRef} data-tab-id="llm" className="overflow-hidden border-border/40 bg-card/40 scroll-mt-4">
           <CardContent className="p-5 md:p-7">
             <div className="flex items-center gap-2 mb-1">
               <Server size={16} className="text-primary" />
               <span className="text-base font-semibold">LLM 服务配置</span>
             </div>
-            <div className="text-[13px] text-dim mb-6">更改后立即生效，无需重启后端</div>
+            <div className="text-[13px] text-dim mb-6">你自己的 LLM，仅对你生效。系统不提供共享 key，这里必须填你自己的；更改后立即生效。</div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -330,7 +615,7 @@ export default function Settings() {
                   <Input
                     className={cn(inputClass, "pr-11")}
                     type={showKey ? "text" : "password"}
-                    placeholder="sk-..."
+                    placeholder="sk-...（你自己的 key）"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                   />
@@ -359,8 +644,316 @@ export default function Settings() {
           </CardContent>
         </Card>
 
+        {/* Embedding */}
+        <Card ref={embeddingRef} data-tab-id="embedding" className="overflow-hidden border-border/40 bg-card/40 scroll-mt-4">
+          <CardContent className="p-5 md:p-7">
+            <div className="flex items-center gap-2 mb-1">
+              <Boxes size={16} className="text-primary" />
+              <span className="text-base font-semibold">Embedding 模型</span>
+            </div>
+            <div className="text-[13px] text-dim mb-6">
+              你自己的 Embedding，仅对你生效；用于题库 / 简历 / 知识库的向量化，必须配置。
+              <span className="text-amber-500/90">更换模型后请点下方「更新向量索引」重建（会清空并重算向量，历史会话记忆向量无法恢复）。</span>
+            </div>
+
+            <div className="space-y-2.5 mb-5">
+              <Label className={labelClass}>后端模式</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: "", label: "自动", hint: "填了 API 走 API，否则本地" },
+                  { value: "api", label: "API", hint: "OpenAI 兼容接口" },
+                  { value: "local", label: "本地", hint: "HuggingFace 模型" },
+                ].map((opt) => (
+                  <button
+                    key={opt.value || "auto"}
+                    type="button"
+                    onClick={() => setEmbBackend(opt.value)}
+                    className={cn(
+                      "px-4 py-2 rounded-xl border text-sm transition-all",
+                      embBackend === opt.value
+                        ? "bg-primary/12 text-primary border-primary/50 font-medium"
+                        : "border-border bg-card/80 text-dim hover:text-text hover:bg-hover"
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[12px] text-dim/70 mt-1 min-h-[18px]">
+                {[
+                  { value: "", hint: "填了 API 字段走 API，否则走本地（兼容老配置）" },
+                  { value: "api", hint: "通过 OpenAI 兼容接口请求 embedding" },
+                  { value: "local", hint: "用 HuggingFace 加载本地模型，需 `pip install -r requirements.local-embedding.txt`" },
+                ].find((o) => o.value === embBackend)?.hint}
+              </div>
+            </div>
+
+            {(embBackend === "" || embBackend === "api") && (
+              <div className="space-y-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-dim/60">API 模式</div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={labelClass}>API Base URL</Label>
+                    <Input
+                      className={inputClass}
+                      placeholder="例：https://api.openai.com/v1（OpenAI 官方留空亦可）"
+                      value={embApiBase}
+                      onChange={(e) => setEmbApiBase(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Embedding Model</Label>
+                    <Input
+                      className={inputClass}
+                      placeholder="例：BAAI/bge-m3"
+                      value={embApiModel}
+                      onChange={(e) => setEmbApiModel(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className={labelClass}>API Key</Label>
+                  <div className="relative">
+                    <Input
+                      className={cn(inputClass, "pr-11")}
+                      type={showEmbKey ? "text" : "password"}
+                      placeholder="sk-..."
+                      value={embApiKey}
+                      onChange={(e) => setEmbApiKey(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-dim hover:text-text transition-colors"
+                      onClick={() => setShowEmbKey((v) => !v)}
+                    >
+                      {showEmbKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className={labelClass}>单批文本数 (Batch Size)</Label>
+                  <Input
+                    className={cn(inputClass, "max-w-[160px]")}
+                    type="number"
+                    min={1}
+                    max={2048}
+                    value={embApiBatchSize}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setEmbApiBatchSize(Number.isNaN(v) ? 1 : Math.min(2048, Math.max(1, v)));
+                    }}
+                  />
+                  <div className="text-[12px] text-dim/70">
+                    每次请求的文本条数上限，因服务商而异（如 DashScope 10、OpenAI 可上千）。默认 10 最稳妥，按你的服务商上限调大；超限会报 400。
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(embBackend === "" || embBackend === "local") && (
+              <div className={cn("space-y-4", embBackend === "" && "mt-6 border-t border-border/40 pt-5")}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-dim/60">本地模式</div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Model Name</Label>
+                    <Input
+                      className={inputClass}
+                      placeholder="例：BAAI/bge-m3"
+                      value={embLocalModel}
+                      onChange={(e) => setEmbLocalModel(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={labelClass}>本地路径 (可选)</Label>
+                    <Input
+                      className={inputClass}
+                      placeholder="留空时按 model name 在线下载"
+                      value={embLocalPath}
+                      onChange={(e) => setEmbLocalPath(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {needsReindex && (
+              <div className="mt-6 flex items-start gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/5 p-4 text-[13px] text-amber-500/90">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <span>
+                  你更换了 Embedding 模型，旧向量已失效。点击下方按钮重建简历 / 知识库 / 记忆向量；
+                  在重建前，相关检索结果会暂时为空。
+                </span>
+              </div>
+            )}
+
+            <div className="mt-6 space-y-3 border-t border-border/40 pt-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={handleRebuildIndex}
+                  disabled={reindexing}
+                  className="h-10 rounded-xl"
+                >
+                  {reindexing ? (
+                    <>
+                      <Loader2 size={15} className="mr-1.5 animate-spin" /> 重建中…
+                    </>
+                  ) : (
+                    <>
+                      <RotateCw size={15} className="mr-1.5" /> 更新向量索引
+                    </>
+                  )}
+                </Button>
+                {!reindexing &&
+                  (reindexDone ? (
+                    <span className="flex items-center gap-1.5 text-[13px] text-emerald-500">
+                      <Check size={15} /> 已重建
+                    </span>
+                  ) : reindexError ? (
+                    <span className="text-[13px] text-red-500">{reindexError}</span>
+                  ) : lastReindexAt ? (
+                    <span className="text-[12px] text-dim">
+                      上次更新：{lastReindexAt.replace("T", " ").slice(0, 16)}
+                    </span>
+                  ) : (
+                    <span className="text-[12px] text-dim">
+                      更换 Embedding 模型并保存后，点此用新模型重建简历 / 知识库 / 记忆向量
+                    </span>
+                  ))}
+              </div>
+
+              {reindexing && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[12px] text-dim">
+                    <span className="truncate">
+                      {reindexProgress
+                        ? `${reindexProgress.label}${reindexProgress.status === "error" ? "（失败，已跳过）" : "…"}`
+                        : "准备中…"}
+                    </span>
+                    <span className="shrink-0 tabular-nums">
+                      {reindexProgress ? `${reindexProgress.completed}/${reindexProgress.total}` : ""}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/60">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-300"
+                      style={{
+                        width: reindexProgress?.total
+                          ? `${Math.round((reindexProgress.completed / reindexProgress.total) * 100)}%`
+                          : "0%",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Optional service keys (per-user; each gates one feature) */}
+        <Card ref={servicesRef} data-tab-id="services" className="overflow-hidden border-border/40 bg-card/40 scroll-mt-4">
+          <CardContent className="p-5 md:p-7">
+            <div className="flex items-center gap-2 mb-1">
+              <KeyRound size={16} className="text-primary" />
+              <span className="text-base font-semibold">可选服务密钥</span>
+            </div>
+            <div className="text-[13px] text-dim mb-6">
+              按需填写，各自启用对应功能；不填则该功能关闭。均为你的专属配置，仅对你生效。
+            </div>
+
+            <div className="space-y-6">
+              {/* DashScope */}
+              <div className="space-y-2">
+                <Label className={labelClass}>DashScope API Key</Label>
+                <div className="relative">
+                  <Input
+                    className={cn(inputClass, "pr-11")}
+                    type={showDashscope ? "text" : "password"}
+                    placeholder="sk-...（语音输入 / 录音转写 / Copilot 实时识别）"
+                    value={dashscopeKey}
+                    onChange={(e) => setDashscopeKey(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-dim hover:text-text transition-colors"
+                    onClick={() => setShowDashscope((v) => !v)}
+                  >
+                    {showDashscope ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div className="text-[12px] text-dim/70">阿里云百炼（DashScope）。不填则语音相关功能不可用。</div>
+              </div>
+
+              {/* Tavily */}
+              <div className="space-y-2 border-t border-border/40 pt-5">
+                <Label className={labelClass}>Tavily API Key</Label>
+                <div className="relative">
+                  <Input
+                    className={cn(inputClass, "pr-11")}
+                    type={showTavily ? "text" : "password"}
+                    placeholder="tvly-...（Copilot 联网搜索公司情报）"
+                    value={tavilyKey}
+                    onChange={(e) => setTavilyKey(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-dim hover:text-text transition-colors"
+                    onClick={() => setShowTavily((v) => !v)}
+                  >
+                    {showTavily ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div className="text-[12px] text-dim/70">不填则 Copilot 跳过公司联网情报。</div>
+              </div>
+
+              {/* OSS */}
+              <div className="space-y-4 border-t border-border/40 pt-5">
+                <div>
+                  <div className="text-sm font-medium">阿里云 OSS（录音复盘长音频上传）</div>
+                  <div className="text-[12px] text-dim/70 mt-1">仅录音复盘上传长音频需要；答题短语音不需要。</div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Access Key Id</Label>
+                    <Input className={inputClass} placeholder="LTAI..." value={ossKeyId} onChange={(e) => setOssKeyId(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Bucket</Label>
+                    <Input className={inputClass} placeholder="my-bucket" value={ossBucket} onChange={(e) => setOssBucket(e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Access Key Secret</Label>
+                    <div className="relative">
+                      <Input
+                        className={cn(inputClass, "pr-11")}
+                        type={showOssSecret ? "text" : "password"}
+                        placeholder="••••••"
+                        value={ossKeySecret}
+                        onChange={(e) => setOssKeySecret(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-dim hover:text-text transition-colors"
+                        onClick={() => setShowOssSecret((v) => !v)}
+                      >
+                        {showOssSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={labelClass}>Endpoint</Label>
+                    <Input className={inputClass} placeholder="oss-cn-shanghai.aliyuncs.com" value={ossEndpoint} onChange={(e) => setOssEndpoint(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Voiceprint (Optional) */}
-        <Card className="overflow-hidden border-border/80 bg-card/76">
+        <Card ref={voiceprintRef} data-tab-id="voiceprint" className="overflow-hidden border-border/40 bg-card/40 scroll-mt-4">
           <CardContent className="p-5 md:p-7">
             <div className="flex items-center gap-2 mb-1">
               <Mic size={16} className="text-primary" />
@@ -477,7 +1070,7 @@ export default function Settings() {
         </Card>
 
         {/* Training Params */}
-        <Card className="overflow-hidden border-border/80 bg-card/76">
+        <Card ref={trainingRef} data-tab-id="training" className="overflow-hidden border-border/40 bg-card/40 scroll-mt-4">
           <CardContent className="p-5 md:p-7">
             <div className="flex items-center gap-2 mb-1">
               <Sliders size={16} className="text-primary" />
@@ -529,15 +1122,190 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Account / System (admin only) */}
+        {isAdmin && (
+        <Card ref={accountRef} data-tab-id="account" className="overflow-hidden border-border/40 bg-card/40 scroll-mt-4">
+          <CardContent className="p-5 md:p-7">
+            <div className="flex items-center gap-2 mb-1">
+              <UserCog size={16} className="text-primary" />
+              <span className="text-base font-semibold">账户</span>
+            </div>
+            <div className="text-[13px] text-dim mb-5">控制谁能进入系统。保存后立即生效。仅管理员可见。</div>
+
+            <label className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/40 px-4 py-4 cursor-pointer select-none">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">允许新用户注册</div>
+                <div className="text-[12px] text-dim/70 mt-1 leading-5">
+                  关闭后登录页隐藏注册入口，只有 DEFAULT_EMAIL/PASSWORD（或已注册账户）能登录。建议自用部署关闭。
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={allowRegistration}
+                onClick={() => setAllowRegistration((v) => !v)}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 mt-0.5",
+                  allowRegistration ? "bg-primary" : "bg-border"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200",
+                    allowRegistration ? "translate-x-5" : "translate-x-0.5"
+                  )}
+                />
+              </button>
+            </label>
+          </CardContent>
+        </Card>
+        )}
+
+        {/* Data Migration */}
+        <Card ref={migrationRef} data-tab-id="migration" className="overflow-hidden border-border/40 bg-card/40 scroll-mt-4">
+          <CardContent className="p-5 md:p-7">
+            <div className="flex items-center gap-2 mb-1">
+              <Database size={16} className="text-primary" />
+              <span className="text-base font-semibold">数据迁移</span>
+            </div>
+            <div className="text-[13px] text-dim mb-5">
+              备份与跨机器迁移面试历史、复盘、画像、简历、知识库、题库与训练偏好。LLM/声纹凭据等环境配置不在此范围。
+            </div>
+
+            <div className="space-y-5">
+              {/* Export */}
+              <div className="rounded-xl border border-border/60 bg-background/40 px-4 py-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-sm font-medium mb-0.5">导出当前账户数据</div>
+                    <div className="text-[12px] text-dim/70">打包为 .tar.gz 下载到本地</div>
+                  </div>
+                  <Button variant="outline" disabled={exporting} onClick={handleExport}>
+                    {exporting ? (
+                      <Loader2 size={14} className="mr-1.5 animate-spin" />
+                    ) : (
+                      <Download size={14} className="mr-1.5" />
+                    )}
+                    {exporting ? "导出中..." : "导出"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Import */}
+              <div className="rounded-xl border border-border/60 bg-background/40 px-4 py-4 space-y-4">
+                <div>
+                  <div className="text-sm font-medium mb-0.5">从备份导入</div>
+                  <div className="text-[12px] text-dim/70">归档中的数据将归到当前登录账户</div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    ref={importFileInputRef}
+                    type="file"
+                    accept=".gz,.tgz,application/gzip,application/x-gzip"
+                    onChange={handleImportFileChange}
+                    className="text-[12px] text-dim file:mr-3 file:rounded-lg file:border-0 file:bg-card file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:bg-hover"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={labelClass}>会话冲突策略</Label>
+                    <div className="flex gap-2">
+                      {[
+                        { value: "skip", label: "保留本地" },
+                        { value: "overwrite", label: "用归档覆盖" },
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setImportDbStrategy(opt.value)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg border text-[13px] transition-all",
+                            importDbStrategy === opt.value
+                              ? "bg-primary/12 text-primary border-primary/50 font-medium"
+                              : "border-border bg-card/80 text-dim hover:text-text hover:bg-hover"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={labelClass}>文件冲突</Label>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={importOverwriteFiles}
+                        onChange={(e) => setImportOverwriteFiles(e.target.checked)}
+                        className="accent-primary"
+                      />
+                      <span className="text-[13px] text-dim">用归档文件覆盖本地</span>
+                    </label>
+                  </div>
+                </div>
+
+                {importConfirming ? (
+                  <div className="rounded-lg border border-amber-400/40 bg-amber-400/8 px-3 py-3">
+                    <div className="flex items-start gap-2 mb-2.5">
+                      <AlertTriangle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                      <div className="text-[13px]">
+                        将把 <span className="font-medium">{importFile?.name}</span> 合并到当前账户。
+                        {importDbStrategy === "overwrite" && "本地同 ID 的会话会被覆盖。"}
+                        {importOverwriteFiles && "用户文件也会被覆盖。"}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" disabled={importBusy} onClick={() => setImportConfirming(false)}>
+                        取消
+                      </Button>
+                      <Button variant="gradient" disabled={importBusy} onClick={handleImportConfirm}>
+                        {importBusy && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+                        {importBusy ? "导入中..." : "确认导入"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <Button variant="outline" disabled={!importFile || importBusy} onClick={handleImportClick}>
+                      <Upload size={14} className="mr-1.5" />
+                      导入
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {(migrationMessage || migrationError) && (
+                <div className={cn("text-[12px]", migrationError ? "text-red" : "text-dim")}>
+                  {migrationError || migrationMessage}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        </div>
       </div>
 
-      {/* Save */}
-      <div className="flex items-center justify-end gap-3 mt-6">
-        {error && <span className="text-sm text-red">{error}</span>}
-        <Button variant="gradient" className="px-8" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 size={15} className="animate-spin" /> : saved ? <Check size={15} /> : null}
-          {saving ? "保存中..." : saved ? "已保存" : "保存"}
-        </Button>
+      {/* Sticky save bar (commits LLM + training params; 声纹/数据迁移 各自保存) */}
+      <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-border/40 bg-background/85 px-4 py-3 backdrop-blur-md md:-mx-7 md:px-7">
+        <div className="flex items-center justify-end gap-4">
+          {error ? (
+            <span className="text-sm text-red">{error}</span>
+          ) : (
+            <span className="text-[12px] text-dim/70">
+              {isAdmin
+                ? "保存 LLM + Embedding + 服务密钥 + 训练参数 + 账户。声纹与数据迁移各自独立保存。"
+                : "保存 LLM + Embedding + 服务密钥 + 训练参数。声纹与数据迁移各自独立保存。"}
+            </span>
+          )}
+          <Button variant="gradient" className="px-8" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 size={15} className="animate-spin" /> : saved ? <Check size={15} /> : null}
+            {saving ? "保存中..." : saved ? "已保存" : "保存"}
+          </Button>
+        </div>
       </div>
     </div>
   );

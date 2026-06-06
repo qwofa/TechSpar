@@ -3,48 +3,63 @@ from pydantic_settings import BaseSettings
 
 
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
+# API embedding 单批文本数上限的默认值。各服务商上限不同(如 DashScope 10、OpenAI 可达 2048),
+# 取较保守的 10 作默认,任何服务商都不会超限报 400;用户可在设置里按自己的服务商调大。
+DEFAULT_API_EMBED_BATCH_SIZE = 10
+
+
+# ── Embedding inference (single source of truth) ──
+# Free functions so both the global Settings object and per-user resolved
+# configs compute backend/model/path identically.
+
+def embedding_mode_of(backend: str, api_base: str, api_key: str) -> str:
+    if backend:
+        b = backend.strip().lower()
+        if b in {"api", "local"}:
+            return b
+        raise ValueError("EMBEDDING_BACKEND must be 'api' or 'local'")
+    if api_base or api_key:
+        return "api"
+    return "local"
+
+
+def embedding_api_model_of(api_model: str, deprecated_model: str = "") -> str:
+    return api_model or deprecated_model or DEFAULT_EMBEDDING_MODEL
+
+
+def embedding_local_model_of(local_model: str, deprecated_model: str = "") -> str:
+    return local_model or deprecated_model or DEFAULT_EMBEDDING_MODEL
+
+
+def embedding_local_path_of(
+    local_path: str, local_model: str, base_dir: Path, deprecated_model: str = ""
+) -> "Path | None":
+    if local_path:
+        return Path(local_path).expanduser()
+    bundled_path = base_dir / "data" / "models" / "bge-m3"
+    if embedding_local_model_of(local_model, deprecated_model) == DEFAULT_EMBEDDING_MODEL and bundled_path.exists():
+        return bundled_path
+    return None
+
+
+def embedding_target_of(
+    backend: str, api_base: str, api_key: str, api_model: str,
+    local_model: str, local_path: str, base_dir: Path, deprecated_model: str = "",
+) -> str:
+    """Identity string for an embedding config — also used as the cache/rebuild signature."""
+    if embedding_mode_of(backend, api_base, api_key) == "api":
+        return embedding_api_model_of(api_model, deprecated_model)
+    path = embedding_local_path_of(local_path, local_model, base_dir, deprecated_model)
+    if path is not None:
+        return str(path)
+    return embedding_local_model_of(local_model, deprecated_model)
 
 
 class Settings(BaseSettings):
-    # LLM (OpenAI-compatible proxy)
-    api_base: str = ""
-    api_key: str = ""
-    model: str = ""
-    temperature: float = 0.7
-
-    # Embedding — explicit backend + separate config for API/local modes
-    embedding_backend: str = ""  # api | local; empty keeps legacy inference
-    embedding_api_base: str = ""
-    embedding_api_key: str = ""
-    embedding_api_model: str = ""
-    local_embedding_model: str = ""
-    local_embedding_path: str = ""
-    embedding_model: str = ""  # deprecated fallback for EMBEDDING_MODEL
-
-    # DashScope ASR (speech-to-text, batch transcription)
-    dashscope_api_key: str = ""
-
-    # Copilot — 独立 LLM 配置（可选，不填则 fallback 到主 LLM）
-    copilot_api_base: str = ""
-    copilot_api_key: str = ""
-    copilot_model: str = ""
-    copilot_temperature: float = 0.3  # Copilot 场景偏确定性
-
-    # Copilot — 腾讯云 VPR 声纹识别（可选，未配置时自动回退手动按钮模式）
-    # 允许在用户 settings.json 中覆盖，此处为全局兜底
-    tencent_secret_id: str = ""
-    tencent_secret_key: str = ""
-    tencent_vpr_app_id: str = ""
-
-    # Copilot — Tavily Web Search
-    tavily_api_key: str = ""
-
-    # Alibaba Cloud OSS (only long-audio filetrans needs a public URL;
-    # short audio goes through base64 sync chat/completions, no OSS required).
-    aliyun_oss_access_key_id: str = ""
-    aliyun_oss_access_key_secret: str = ""
-    aliyun_oss_bucket: str = ""
-    aliyun_oss_endpoint: str = ""  # e.g. "oss-cn-shanghai.aliyuncs.com"
+    # No provider/service secrets live here. LLM, Embedding, DashScope, Tavily and
+    # OSS keys are all per-user (data/users/<id>/provider.json + voiceprint.json),
+    # resolved at request time by backend.llm_provider. The .env only carries the
+    # bootstrap config below — never an API key.
 
     # Paths
     base_dir: Path = Path(__file__).resolve().parent.parent
@@ -85,58 +100,20 @@ class Settings(BaseSettings):
     def user_index_cache_path(self, user_id: str) -> Path:
         return self.user_data_dir(user_id) / ".index_cache"
 
+    def user_index_meta_path(self, user_id: str) -> Path:
+        """向量索引元数据(如上次重建时间)。独立于 .index_cache,后者重建时会被整目录清空。"""
+        return self.user_data_dir(user_id) / "index_meta.json"
+
     def user_settings_path(self, user_id: str) -> Path:
         return self.user_data_dir(user_id) / "settings.json"
 
-    @property
-    def effective_dashscope_api_key(self) -> str:
-        """DashScope API key, with fallback to COPILOT_API_KEY when the Copilot
-        LLM is already pointed at DashScope's OpenAI-compatible endpoint.
+    def user_provider_path(self, user_id: str) -> Path:
+        """Per-user LLM/Embedding provider overrides."""
+        return self.user_data_dir(user_id) / "provider.json"
 
-        Lets users reuse a single DashScope account key across LLM + ASR
-        without forcing them to duplicate it into two env vars.
-        """
-        if self.dashscope_api_key:
-            return self.dashscope_api_key
-        if self.copilot_api_key and "dashscope.aliyuncs.com" in (self.copilot_api_base or ""):
-            return self.copilot_api_key
-        return ""
-
-    def embedding_backend_mode(self) -> str:
-        if self.embedding_backend:
-            backend = self.embedding_backend.strip().lower()
-            if backend in {"api", "local"}:
-                return backend
-            raise ValueError("EMBEDDING_BACKEND must be 'api' or 'local'")
-        if self.embedding_api_base or self.embedding_api_key:
-            return "api"
-        return "local"
-
-    def embedding_api_model_name(self) -> str:
-        return self.embedding_api_model or self.embedding_model or DEFAULT_EMBEDDING_MODEL
-
-    def local_embedding_model_name(self) -> str:
-        return self.local_embedding_model or self.embedding_model or DEFAULT_EMBEDDING_MODEL
-
-    def local_embedding_model_path(self) -> Path | None:
-        if self.local_embedding_path:
-            return Path(self.local_embedding_path).expanduser()
-
-        bundled_path = self.base_dir / "data" / "models" / "bge-m3"
-        if self.local_embedding_model_name() == DEFAULT_EMBEDDING_MODEL and bundled_path.exists():
-            return bundled_path
-        return None
-
-    def active_embedding_target(self) -> str:
-        if self.embedding_backend_mode() == "api":
-            return self.embedding_api_model_name()
-
-        model_path = self.local_embedding_model_path()
-        if model_path is not None:
-            return str(model_path)
-        return self.local_embedding_model_name()
-
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # extra="ignore": pre-existing .env files still list the old provider keys
+    # (now per-user). Silently ignore them instead of failing to boot.
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

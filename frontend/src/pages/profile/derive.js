@@ -1,5 +1,11 @@
 import { MODE_META, TRAINING_MODE_META, PERFORMANCE_DIMENSIONS } from "./meta";
 
+// 知识轴 weak/strong 过滤:排除老数据里的 axis=performance 条目
+// (表现轴现在走 behavior_signals,不再混进 weak_points)
+export function isKnowledgeAxis(item) {
+  return item?.axis !== "performance";
+}
+
 export function getMasteryScore(data) {
   const value = data?.score ?? (data?.level ? data.level * 20 : null);
   if (value == null || Number.isNaN(Number(value))) return null;
@@ -10,6 +16,19 @@ function toTimestamp(value) {
   if (!value) return 0;
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+// 知识轴薄弱点显著性:recency × frequency 衰减,与后端 _weak_point_weight 对齐。
+// 长期不再暴露的点逐渐沉底而非被硬切,纯排序信号。
+const WEAK_POINT_HALF_LIFE_DAYS = 30;
+
+export function weakPointWeight(item, now = Date.now()) {
+  const lastSeen = toTimestamp(item.last_seen || item.first_seen);
+  const days = lastSeen ? Math.max(0, (now - lastSeen) / 86400000) : 0;
+  const recency = Math.pow(0.5, days / WEAK_POINT_HALF_LIFE_DAYS);
+  const timesSeen = item.times_seen || 1;
+  const freqMult = 1 + Math.min(Math.log2(timesSeen > 0 ? timesSeen : 1), 2);
+  return recency * freqMult;
 }
 
 export function formatMinute(value) {
@@ -32,6 +51,7 @@ export function sortByDateDesc(list, primaryKey, fallbackKey) {
 }
 
 export function buildPriorityWeaknesses(weakPoints, masteryMap) {
+  const now = Date.now();
   return [...weakPoints]
     .map((item) => {
       const masteryScore = getMasteryScore(masteryMap[item.topic]);
@@ -43,13 +63,13 @@ export function buildPriorityWeaknesses(weakPoints, masteryMap) {
       return {
         ...item,
         masteryScore,
+        weight: weakPointWeight(item, now),
         domainNote: masteryMap[item.topic]?.notes || "",
         reason: reasons.join(" · "),
       };
     })
     .sort((a, b) => {
-      const seenDiff = (b.times_seen || 1) - (a.times_seen || 1);
-      if (seenDiff !== 0) return seenDiff;
+      if (Math.abs(a.weight - b.weight) > 1e-9) return b.weight - a.weight;
 
       const masteryA = a.masteryScore ?? -1;
       const masteryB = b.masteryScore ?? -1;
@@ -59,38 +79,90 @@ export function buildPriorityWeaknesses(weakPoints, masteryMap) {
     });
 }
 
-export function splitByAxis(items) {
-  const knowledge = [];
-  const performance = [];
-  for (const item of items) {
-    if (item.axis === "performance") {
-      performance.push(item);
+// 表现轴: 从 profile.behavior_signals 派生分组视图
+//
+// 返回:
+//   - byNamespace: { [namespace]: { negative: [], positive: [], improved: [] } }
+//                  每个数组已按 (times_seen desc, last_seen desc) 排序
+//   - namespaces: Object.keys(PERFORMANCE_DIMENSIONS) 顺序的数组,
+//                 即使该 namespace 没有数据也保留一个空槽,方便前端按四个固定卡渲染
+//   - featured: 最显著的活跃负向信号(times_seen 最高的那条),或 null
+//   - activeNegativeCount / activePositiveCount / improvedCount: 顶级摘要数字
+export function buildBehaviorSignals(profile) {
+  const raw = profile?.behavior_signals || {};
+  const ids = Object.keys(raw);
+
+  const byNamespace = {};
+  for (const ns of Object.keys(PERFORMANCE_DIMENSIONS)) {
+    byNamespace[ns] = { negative: [], positive: [], improved: [] };
+  }
+
+  let activeNegativeCount = 0;
+  let activePositiveCount = 0;
+  let improvedCount = 0;
+
+  for (const id of ids) {
+    const data = raw[id] || {};
+    const ns = data.namespace || "other";
+    if (!byNamespace[ns]) {
+      // 异常 namespace 也保留,但前端只渲染 PERFORMANCE_DIMENSIONS 里有的那四个
+      byNamespace[ns] = { negative: [], positive: [], improved: [] };
+    }
+    const signal = { id, ...data };
+    if (signal.improved) {
+      byNamespace[ns].improved.push(signal);
+      improvedCount += 1;
+    } else if ((signal.polarity || "negative") === "positive") {
+      byNamespace[ns].positive.push(signal);
+      activePositiveCount += 1;
     } else {
-      knowledge.push(item);
+      byNamespace[ns].negative.push(signal);
+      activeNegativeCount += 1;
     }
   }
-  return { knowledge, performance };
-}
 
-export function buildPerformanceSummary(perfWeak, perfStrong) {
-  const dims = {};
-  for (const key of Object.keys(PERFORMANCE_DIMENSIONS)) {
-    dims[key] = { weakCount: 0, strongCount: 0, items: [] };
+  const sortSignals = (list) =>
+    list.sort((a, b) => {
+      const tsDiff = (b.times_seen || 1) - (a.times_seen || 1);
+      if (tsDiff !== 0) return tsDiff;
+      return (b.last_seen || "").localeCompare(a.last_seen || "");
+    });
+
+  for (const ns of Object.keys(byNamespace)) {
+    sortSignals(byNamespace[ns].negative);
+    sortSignals(byNamespace[ns].positive);
+    sortSignals(byNamespace[ns].improved);
   }
-  for (const item of perfWeak) {
-    const d = dims[item.topic] || dims.communication;
-    d.weakCount += 1;
-    d.items.push(item);
+
+  // featured 在所有 namespace 的活跃负向里挑 times_seen 最高的一条
+  let featured = null;
+  for (const ns of Object.keys(byNamespace)) {
+    const top = byNamespace[ns].negative[0];
+    if (!top) continue;
+    if (
+      !featured ||
+      (top.times_seen || 1) > (featured.times_seen || 1) ||
+      ((top.times_seen || 1) === (featured.times_seen || 1) &&
+        (top.last_seen || "") > (featured.last_seen || ""))
+    ) {
+      featured = top;
+    }
   }
-  for (const item of perfStrong) {
-    const d = dims[item.topic] || dims.communication;
-    d.strongCount += 1;
-  }
-  return Object.entries(PERFORMANCE_DIMENSIONS).map(([key, meta]) => ({
+
+  const namespaces = Object.entries(PERFORMANCE_DIMENSIONS).map(([key, meta]) => ({
     key,
     ...meta,
-    ...dims[key],
+    ...byNamespace[key],
   }));
+
+  return {
+    byNamespace,
+    namespaces,
+    featured,
+    activeNegativeCount,
+    activePositiveCount,
+    improvedCount,
+  };
 }
 
 export function getRealTopicSet(profile, history, canonicalTopics) {

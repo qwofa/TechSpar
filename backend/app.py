@@ -2,12 +2,16 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from backend.llm_provider import ProviderNotConfigured
+from backend.user_context import CurrentUserMiddleware
 from backend.routers import (
     auth,
     copilot,
+    data_migration,
     history,
     interview,
     knowledge,
@@ -31,12 +35,26 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="TechSpar", version="0.2.0", lifespan=lifespan)
+    app.add_middleware(CurrentUserMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(ProviderNotConfigured)
+    async def _provider_not_configured(_: Request, exc: ProviderNotConfigured):
+        # The frontend keys off code="provider_not_configured" to route to onboarding.
+        label = "LLM" if exc.what == "LLM" else "Embedding"
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": f"请先在「设置」里配置你自己的 {label} 服务后再使用",
+                "code": "provider_not_configured",
+                "provider": exc.what,
+            },
+        )
 
     app.include_router(auth.router)
     app.include_router(resume.router)
@@ -48,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(interview.router)
     app.include_router(knowledge.router)
     app.include_router(history.router)
+    app.include_router(data_migration.router)
     app.include_router(copilot.rest_router)
     app.include_router(copilot.ws_router)
     return app

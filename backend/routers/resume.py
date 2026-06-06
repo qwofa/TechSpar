@@ -1,13 +1,12 @@
 """Resume and speech-to-text routes."""
 
 import re
-import shutil
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from backend.auth import get_current_user
 from backend.config import settings
-from backend.indexer import _index_cache
+from backend.indexer import invalidate_resume
 
 router = APIRouter(prefix="/api")
 
@@ -19,9 +18,7 @@ def _sanitize_filename(filename: str) -> str:
         base, ext = name
     else:
         base, ext = filename, ""
-    # Replace problematic characters with underscore
     base = re.sub(r'[<>:"|?*\x00-\x1f]', "_", base)
-    # Collapse multiple spaces/underscores
     base = re.sub(r'[\s_]+', "_", base.strip())
     if ext:
         ext = ext.lstrip(".").lower()
@@ -64,10 +61,8 @@ async def upload_resume(file: UploadFile = File(...), user_id: str = Depends(get
     content = await file.read()
     dest.write_bytes(content)
 
-    _index_cache.pop((user_id, "resume"), None)
-    cache_dir = settings.user_index_cache_path(user_id) / "resume"
-    if cache_dir.exists():
-        shutil.rmtree(cache_dir)
+    # Drop stale resume vectors; the next query_resume lazily re-ingests the new PDF.
+    invalidate_resume(user_id)
 
     return {"ok": True, "filename": file.filename, "size": len(content)}
 

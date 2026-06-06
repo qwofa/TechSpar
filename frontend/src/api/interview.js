@@ -201,6 +201,20 @@ export async function getReview(sessionId) {
   return res.json();
 }
 
+export async function retryReview(sessionId) {
+  const res = await authFetch(`${API_BASE}/interview/review/${sessionId}/generate`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getResumableSession(sessionId) {
+  const res = await authFetch(`${API_BASE}/interview/session/${sessionId}/resume`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function getTaskStatus(taskId) {
   const res = await authFetch(`${API_BASE}/tasks/${taskId}`);
   if (!res.ok) throw new Error(await extractError(res));
@@ -367,4 +381,38 @@ export async function updateSettings(payload) {
   });
   if (!res.ok) throw new Error(await extractError(res));
   return res.json();
+}
+
+export async function rebuildEmbeddingIndex({ onProgress, onDone, onError } = {}) {
+  const res = await authFetch(`${API_BASE}/settings/rebuild-index`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop(); // keep incomplete line
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const data = JSON.parse(line.slice(6));
+        if (data.fatal) {
+          onError?.(new Error(data.error));
+          return;
+        }
+        if (data.done) {
+          onDone?.(data);
+          return;
+        }
+        onProgress?.(data); // { completed, total, label, status }
+      } catch { /* ignore malformed lines */ }
+    }
+  }
 }

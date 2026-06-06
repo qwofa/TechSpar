@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, We
 from langchain_core.messages import HumanMessage
 
 from backend.auth import get_current_user
-from backend.config import settings
+from backend.llm_provider import resolve_dashscope_key
 from backend.memory import llm_update_profile
 from backend.runtime import _copilot_sessions
 from backend.storage import copilot_preps as prep_store
@@ -149,10 +149,14 @@ async def get_copilot_strategy_tree(prep_id: str, user_id: str = Depends(get_cur
 async def copilot_realtime_ws(ws: WebSocket, session_id: str, token: str = ""):
     """Copilot 实时面试辅助 WebSocket。"""
     from backend.auth import decode_token
+    from backend.user_context import set_current_user
 
     await ws.accept()
     session = None
     user_id = decode_token(token) if token else None
+    # Bind user for this connection — realtime copilot subsystem resolves its
+    # LLM/embedding via the ContextVar (create_task tasks copy the context).
+    set_current_user(user_id)
 
     try:
         while True:
@@ -257,13 +261,15 @@ async def _init_copilot_session(
         vp_enabled = bool(vp_client and vp_id)
 
     asr = None
-    if settings.effective_dashscope_api_key:
+    dashscope_key = resolve_dashscope_key(user_id)
+    if dashscope_key:
         try:
             from backend.copilot.asr_stream import CopilotASR
 
             loop = asyncio.get_event_loop()
             asr = CopilotASR(
                 loop,
+                api_key=dashscope_key,
                 voiceprint_client=vp_client if vp_enabled else None,
                 voice_print_id=vp_id if vp_enabled else None,
             )
