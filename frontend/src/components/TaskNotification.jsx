@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { X, Loader2, FileText, AlertCircle } from "lucide-react";
-import { useTaskStatus } from "../contexts/TaskStatusContext";
+import { useTaskStatus } from "../contexts/taskStatusShared";
 
 function getNavTarget(task) {
   if (task.type === "retrospective" && task.result?.topic) {
@@ -8,6 +8,13 @@ function getNavTarget(task) {
   }
   // drill_review, jd_review, recording, resume_review → review page
   return `/review/${task.id}`;
+}
+
+function formatTaskResultLabel(label, result) {
+  if (/生成中$/.test(label)) {
+    return label.replace(/生成中$/, `生成${result}`);
+  }
+  return `${label}${result}`;
 }
 
 export default function TaskNotification() {
@@ -40,7 +47,7 @@ export default function TaskNotification() {
                   dismissTask(task.id);
                 }}
               >
-                {task.label}完成，点击查看
+                {formatTaskResultLabel(task.label, "完成")}，点击查看
               </button>
             </>
           )}
@@ -48,7 +55,7 @@ export default function TaskNotification() {
           {task.status === "error" && (
             <>
               <AlertCircle size={18} className="text-destructive shrink-0" />
-              <span className="text-[14px] text-destructive">{task.label}失败</span>
+              <span className="text-[14px] text-destructive">{formatTaskResultLabel(task.label, "失败")}</span>
             </>
           )}
 

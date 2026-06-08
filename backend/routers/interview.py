@@ -33,8 +33,8 @@ from backend.runtime import (
     _drill_sessions,
     _graphs,
     _job_prep_sessions,
-    _task_status,
     get_or_restore_resume_graph,
+    set_task_status,
 )
 from backend.storage.sessions import (
     STATUS_ENDED,
@@ -58,6 +58,201 @@ router = APIRouter(prefix="/api")
 
 _EVAL_TAG_PREFIX = "<!--EVAL:"
 _EVAL_TAG_SUFFIX = "-->"
+_TOPIC_DRILL_START_TASK = "topic_drill_start"
+_JOB_PREP_START_TASK = "job_prep_start"
+
+
+def _generate_reference_answer_sync(topic_name: str, question_text: str, knowledge_context: str, user_id: str) -> str:
+    from backend.llm_provider import get_langchain_llm
+    from backend.prompts.interviewer import REFERENCE_ANSWER_PROMPT
+
+    prompt = REFERENCE_ANSWER_PROMPT.format(
+        topic_name=topic_name,
+        question=question_text,
+        knowledge_context=knowledge_context,
+    )
+    llm = get_langchain_llm(user_id)
+    response = llm.invoke([HumanMessage(content=prompt)])
+    return response.content.strip()
+
+
+def _build_topic_drill_start_payload(session_id: str, topic: str, questions: list[dict], *, status: str = "done") -> dict:
+    return {
+        "session_id": session_id,
+        "task_id": session_id,
+        "mode": InterviewMode.TOPIC_DRILL.value,
+        "topic": topic,
+        "questions": questions,
+        "status": status,
+    }
+
+
+async def _run_topic_drill_start(
+    session_id: str,
+    topic: str,
+    user_id: str,
+    *,
+    num_questions: int,
+    divergence: int,
+):
+    try:
+        questions = await asyncio.to_thread(
+            generate_drill_questions,
+            topic,
+            user_id,
+            num_questions=num_questions,
+            divergence=divergence,
+        )
+        await asyncio.to_thread(
+            create_session,
+            session_id,
+            InterviewMode.TOPIC_DRILL.value,
+            topic,
+            questions=questions,
+            user_id=user_id,
+        )
+        _drill_sessions[session_id] = {"topic": topic, "questions": questions, "user_id": user_id}
+        set_task_status(
+            session_id,
+            "done",
+            _TOPIC_DRILL_START_TASK,
+            user_id=user_id,
+            result=_build_topic_drill_start_payload(session_id, topic, questions),
+        )
+    except RuntimeError as exc:
+        logger.warning("Failed to build topic drill session %s for user %s: %s", session_id, user_id, exc)
+        set_task_status(
+            session_id,
+            "error",
+            _TOPIC_DRILL_START_TASK,
+            user_id=user_id,
+            result=str(exc),
+        )
+    except Exception as exc:
+        logger.exception("Unexpected topic drill start failure for session %s user %s", session_id, user_id)
+        set_task_status(
+            session_id,
+            "error",
+            _TOPIC_DRILL_START_TASK,
+            user_id=user_id,
+            result=f"专项训练启动失败: {exc}",
+        )
+
+
+def _build_job_prep_start_payload(
+    session_id: str,
+    *,
+    status: str = "done",
+    questions: list[dict] | None = None,
+    preview: dict | None = None,
+    company: str = "",
+    position: str = "",
+    meta: dict | None = None,
+) -> dict:
+    return {
+        "session_id": session_id,
+        "task_id": session_id,
+        "mode": InterviewMode.JD_PREP.value,
+        "questions": questions or [],
+        "preview": preview,
+        "company": company,
+        "position": position,
+        "meta": meta or {},
+        "status": status,
+    }
+
+
+async def _run_job_prep_start(
+    session_id: str,
+    jd_text: str,
+    user_id: str,
+    *,
+    company: str | None = None,
+    position: str | None = None,
+    use_resume: bool = True,
+    preview_data: dict | None = None,
+):
+    company_text = (company or "").strip()
+    position_text = (position or "").strip()
+    jd_text = jd_text.strip()
+
+    try:
+        preview = None
+        if isinstance(preview_data, dict):
+            preview = json.loads(json.dumps(preview_data, ensure_ascii=False))
+        if not preview:
+            preview = await asyncio.to_thread(
+                generate_job_prep_preview,
+                jd_text,
+                user_id,
+                company=company_text or None,
+                position=position_text or None,
+                use_resume=use_resume,
+            )
+
+        questions = await asyncio.to_thread(
+            generate_job_prep_questions,
+            jd_text,
+            preview,
+            user_id,
+            use_resume=use_resume,
+        )
+
+        meta = {
+            "company": preview.get("company") or company_text,
+            "position": preview.get("position") or position_text or "JD 备面",
+            "jd_excerpt": jd_text[:1500],
+            "jd_text": jd_text,
+            "use_resume": use_resume,
+            "preview": preview,
+        }
+
+        await asyncio.to_thread(
+            create_session,
+            session_id,
+            InterviewMode.JD_PREP.value,
+            questions=questions,
+            meta=meta,
+            user_id=user_id,
+        )
+        _job_prep_sessions[session_id] = {
+            "questions": questions,
+            "preview": preview,
+            "meta": meta,
+            "user_id": user_id,
+        }
+        set_task_status(
+            session_id,
+            "done",
+            _JOB_PREP_START_TASK,
+            user_id=user_id,
+            result=_build_job_prep_start_payload(
+                session_id,
+                questions=questions,
+                preview=preview,
+                company=meta["company"],
+                position=meta["position"],
+                meta=meta,
+            ),
+        )
+    except RuntimeError as exc:
+        logger.warning("Failed to build JD prep session %s for user %s: %s", session_id, user_id, exc)
+        set_task_status(
+            session_id,
+            "error",
+            _JOB_PREP_START_TASK,
+            user_id=user_id,
+            result=str(exc),
+        )
+    except Exception as exc:
+        logger.exception("Unexpected JD prep start failure for session %s user %s", session_id, user_id)
+        set_task_status(
+            session_id,
+            "error",
+            _JOB_PREP_START_TASK,
+            user_id=user_id,
+            result=f"JD 备面启动失败: {exc}",
+        )
 
 
 @router.post("/job-prep/preview")
@@ -82,111 +277,97 @@ def job_prep_preview(req: JobPrepPreviewRequest, user_id: str = Depends(get_curr
 
 
 @router.post("/job-prep/start")
-def job_prep_start(req: JobPrepStartRequest, user_id: str = Depends(get_current_user)):
+async def job_prep_start(
+    req: JobPrepStartRequest,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
     """Start a JD-targeted mock interview session."""
     jd_text = req.jd_text.strip()
     if len(jd_text) < 50:
         raise HTTPException(400, "JD 内容太短，无法生成训练。")
 
-    preview = req.preview_data if isinstance(req.preview_data, dict) else None
-    if not preview:
-        try:
-            preview = generate_job_prep_preview(
-                jd_text,
-                user_id,
-                company=req.company,
-                position=req.position,
-                use_resume=req.use_resume,
-            )
-        except RuntimeError as exc:
-            raise HTTPException(500, str(exc))
-
-    try:
-        questions = generate_job_prep_questions(
-            jd_text,
-            preview,
-            user_id,
-            use_resume=req.use_resume,
-        )
-    except RuntimeError as exc:
-        raise HTTPException(500, str(exc))
-
     session_id = str(uuid.uuid4())[:8]
+    company = (req.company or "").strip()
+    position = (req.position or "").strip() or "JD 备面"
+    preview = req.preview_data if isinstance(req.preview_data, dict) else None
     meta = {
-        "company": preview.get("company") or (req.company or "").strip(),
-        "position": preview.get("position") or (req.position or "").strip() or "JD 备面",
+        "company": company,
+        "position": position,
         "jd_excerpt": jd_text[:1500],
+        "jd_text": jd_text,
         "use_resume": req.use_resume,
         "preview": preview,
     }
 
-    create_session(
+    set_task_status(
         session_id,
-        InterviewMode.JD_PREP.value,
-        questions=questions,
-        meta=meta,
+        "pending",
+        _JOB_PREP_START_TASK,
         user_id=user_id,
     )
-    _job_prep_sessions[session_id] = {
-        "questions": questions,
-        "preview": preview,
-        "meta": meta,
-        "user_id": user_id,
-    }
+    background_tasks.add_task(
+        _run_job_prep_start,
+        session_id,
+        jd_text,
+        user_id,
+        company=company or None,
+        position=position,
+        use_resume=req.use_resume,
+        preview_data=preview,
+    )
 
-    return {
-        "session_id": session_id,
-        "mode": InterviewMode.JD_PREP.value,
-        "questions": questions,
-        "preview": preview,
-        "company": meta["company"],
-        "position": meta["position"],
-        "meta": meta,
-    }
+    return _build_job_prep_start_payload(
+        session_id,
+        status="pending",
+        preview=preview,
+        company=company,
+        position=position,
+        meta=meta,
+    )
 
 
 @router.post("/interview/start")
-async def start_interview(req: StartInterviewRequest, user_id: str = Depends(get_current_user)):
+async def start_interview(
+    req: StartInterviewRequest,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
     """Start a new interview session."""
     session_id = str(uuid.uuid4())[:8]
 
     if req.mode == InterviewMode.TOPIC_DRILL:
-        topics = load_topics(user_id)
+        topics = await asyncio.to_thread(load_topics, user_id)
         if not req.topic or req.topic not in topics:
             raise HTTPException(400, f"Invalid topic. Available: {list(topics.keys())}")
 
-        user_prefs = load_user_settings(user_id)
+        user_prefs = await asyncio.to_thread(load_user_settings, user_id)
         num_questions = req.num_questions or user_prefs.num_questions
         divergence = req.divergence or user_prefs.divergence
 
-        try:
-            # generate_drill_questions is sync + LLM-bound; offload to thread
-            # to avoid blocking the event loop.
-            questions = await asyncio.to_thread(
-                generate_drill_questions,
-                req.topic,
-                user_id,
-                num_questions=num_questions,
-                divergence=divergence,
-            )
-        except RuntimeError as exc:
-            raise HTTPException(500, str(exc))
-
-        create_session(session_id, req.mode.value, req.topic, questions=questions, user_id=user_id)
-        _drill_sessions[session_id] = {"topic": req.topic, "questions": questions, "user_id": user_id}
-        return {
-            "session_id": session_id,
-            "mode": req.mode.value,
-            "topic": req.topic,
-            "questions": questions,
-        }
+        set_task_status(
+            session_id,
+            "pending",
+            _TOPIC_DRILL_START_TASK,
+            user_id=user_id,
+        )
+        background_tasks.add_task(
+            _run_topic_drill_start,
+            session_id,
+            req.topic,
+            user_id,
+            num_questions=num_questions,
+            divergence=divergence,
+        )
+        return _build_topic_drill_start_payload(session_id, req.topic, [], status="pending")
 
     if req.mode == InterviewMode.RESUME:
         from backend.graphs.resume_interview import compile_resume_interview
 
         target_role = (req.target_role or "").strip()
         if not target_role:
-            target_role = (get_profile(user_id).get("target_role") or "").strip()
+            profile = await asyncio.to_thread(get_profile, user_id)
+            target_role = (profile.get("target_role") or "").strip()
         if not target_role:
             raise HTTPException(400, "请先填写目标岗位")
 
@@ -196,7 +377,7 @@ async def start_interview(req: StartInterviewRequest, user_id: str = Depends(get
             logger.warning("Failed to update target role for user %s: %s", user_id, exc)
 
         try:
-            graph = compile_resume_interview(user_id)
+            graph = await asyncio.to_thread(compile_resume_interview, user_id)
             config = {"configurable": {"thread_id": session_id}}
             result = await graph.ainvoke({"target_role": target_role}, config)
         except Exception as exc:
@@ -218,11 +399,15 @@ async def start_interview(req: StartInterviewRequest, user_id: str = Depends(get
                 ai_message = msg.content
                 break
 
-        create_session(
-            session_id, req.mode.value, req.topic,
-            meta={"target_role": target_role}, user_id=user_id,
+        await asyncio.to_thread(
+            create_session,
+            session_id,
+            req.mode.value,
+            req.topic,
+            meta={"target_role": target_role},
+            user_id=user_id,
         )
-        append_message(session_id, "assistant", ai_message, user_id=user_id)
+        await asyncio.to_thread(append_message, session_id, "assistant", ai_message, user_id=user_id)
         _graphs[session_id] = {
             "graph": graph,
             "config": config,
@@ -256,7 +441,7 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)):
 
     await graph.aupdate_state(config, {"messages": [HumanMessage(content=req.message)]})
     result = await graph.ainvoke(None, config)
-    append_message(req.session_id, "user", req.message, user_id=user_id)
+    await asyncio.to_thread(append_message, req.session_id, "user", req.message, user_id=user_id)
 
     is_finished = False
     if isinstance(result, dict):
@@ -271,7 +456,7 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)):
             ai_message = msg.content
             break
 
-    append_message(req.session_id, "assistant", ai_message, user_id=user_id)
+    await asyncio.to_thread(append_message, req.session_id, "assistant", ai_message, user_id=user_id)
     return {
         "session_id": req.session_id,
         "message": ai_message,
@@ -296,7 +481,7 @@ async def chat_stream(req: ChatRequest, user_id: str = Depends(get_current_user)
         return StreamingResponse(finished_gen(), media_type="text/event-stream")
 
     await graph.aupdate_state(config, {"messages": [HumanMessage(content=req.message)]})
-    append_message(req.session_id, "user", req.message, user_id=user_id)
+    await asyncio.to_thread(append_message, req.session_id, "user", req.message, user_id=user_id)
 
     async def event_generator():
         full_text = ""
@@ -347,7 +532,7 @@ async def chat_stream(req: ChatRequest, user_id: str = Depends(get_current_user)
             if phase in (InterviewPhase.END.value, "end"):
                 is_finished = True
 
-        append_message(req.session_id, "assistant", full_text, user_id=user_id)
+        await asyncio.to_thread(append_message, req.session_id, "assistant", full_text, user_id=user_id)
         yield f"data: {json.dumps({'done': True, 'is_finished': is_finished})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -404,18 +589,28 @@ async def _run_resume_review(session_id: str, user_id: str):
         if extraction.get("avg_score"):
             resume_overall["avg_score"] = extraction["avg_score"]
 
-        save_review(session_id, review, scores, weak_points,
-                    overall=resume_overall, user_id=user_id)
-        _task_status[session_id] = {"status": "done", "type": "resume_review"}
+        await asyncio.to_thread(
+            save_review,
+            session_id,
+            review,
+            scores,
+            weak_points,
+            overall=resume_overall,
+            user_id=user_id,
+        )
+        set_task_status(session_id, "done", "resume_review", user_id=user_id)
         _graphs.pop(session_id, None)
         logger.info("Review generated for session %s", session_id)
     except Exception as exc:
         logger.exception("Review generation failed for session %s", session_id)
-        update_session_status(
-            session_id, STATUS_REVIEW_FAILED,
-            user_id=user_id, review_error=str(exc)[:500] or "未知错误",
+        await asyncio.to_thread(
+            update_session_status,
+            session_id,
+            STATUS_REVIEW_FAILED,
+            user_id=user_id,
+            review_error=str(exc)[:500] or "未知错误",
         )
-        _task_status[session_id] = {"status": "error", "type": "resume_review"}
+        set_task_status(session_id, "error", "resume_review", user_id=user_id)
 
 
 def _end_drill_background(session_id, topic, questions, answers, user_id):
@@ -445,7 +640,7 @@ def _end_drill_background(session_id, topic, questions, answers, user_id):
             transcript=_qa_transcript(questions, answers), session_id=session_id,
         ))
 
-        _task_status[session_id] = {"status": "done", "type": "drill_review"}
+        set_task_status(session_id, "done", "drill_review", user_id=user_id)
         _drill_sessions.pop(session_id, None)
         logger.info("Drill review generated for session %s", session_id)
     except Exception as exc:
@@ -454,7 +649,7 @@ def _end_drill_background(session_id, topic, questions, answers, user_id):
             session_id, STATUS_REVIEW_FAILED,
             user_id=user_id, review_error=str(exc)[:500] or "未知错误",
         )
-        _task_status[session_id] = {"status": "error", "type": "drill_review"}
+        set_task_status(session_id, "error", "drill_review", user_id=user_id)
 
 
 def _end_jd_prep_background(session_id, questions, answers, preview, meta, user_id):
@@ -476,7 +671,7 @@ def _end_jd_prep_background(session_id, questions, answers, preview, meta, user_
             transcript=_qa_transcript(questions, answers), session_id=session_id,
         ))
 
-        _task_status[session_id] = {"status": "done", "type": "jd_review"}
+        set_task_status(session_id, "done", "jd_review", user_id=user_id)
         _job_prep_sessions.pop(session_id, None)
         logger.info("JD prep review generated for session %s", session_id)
     except Exception as exc:
@@ -485,7 +680,7 @@ def _end_jd_prep_background(session_id, questions, answers, preview, meta, user_
             session_id, STATUS_REVIEW_FAILED,
             user_id=user_id, review_error=str(exc)[:500] or "未知错误",
         )
-        _task_status[session_id] = {"status": "error", "type": "jd_review"}
+        set_task_status(session_id, "error", "jd_review", user_id=user_id)
 
 
 def _extract_answers_from_transcript(transcript: list, questions: list) -> list[dict]:
@@ -513,7 +708,7 @@ def _extract_answers_from_transcript(transcript: list, questions: list) -> list[
     return answers
 
 
-def _dispatch_review(
+async def _dispatch_review(
     session_id: str,
     session: dict,
     user_id: str,
@@ -527,8 +722,8 @@ def _dispatch_review(
     mode = session["mode"]
 
     if mode == InterviewMode.RESUME.value:
-        update_session_status(session_id, STATUS_REVIEWING, user_id=user_id, clear_error=True)
-        _task_status[session_id] = {"status": "pending", "type": "resume_review"}
+        await asyncio.to_thread(update_session_status, session_id, STATUS_REVIEWING, user_id=user_id, clear_error=True)
+        set_task_status(session_id, "pending", "resume_review", user_id=user_id)
         background_tasks.add_task(_run_resume_review, session_id, user_id)
         return {"session_id": session_id, "mode": mode, "status": "pending"}
 
@@ -542,8 +737,8 @@ def _dispatch_review(
             session.get("transcript", []), questions,
         )
 
-        update_session_status(session_id, STATUS_REVIEWING, user_id=user_id, clear_error=True)
-        _task_status[session_id] = {"status": "pending", "type": "drill_review"}
+        await asyncio.to_thread(update_session_status, session_id, STATUS_REVIEWING, user_id=user_id, clear_error=True)
+        set_task_status(session_id, "pending", "drill_review", user_id=user_id)
         background_tasks.add_task(_end_drill_background, session_id, topic, questions, answers, user_id)
         return {"session_id": session_id, "mode": mode, "status": "pending"}
 
@@ -558,8 +753,8 @@ def _dispatch_review(
             session.get("transcript", []), questions,
         )
 
-        update_session_status(session_id, STATUS_REVIEWING, user_id=user_id, clear_error=True)
-        _task_status[session_id] = {"status": "pending", "type": "jd_review"}
+        await asyncio.to_thread(update_session_status, session_id, STATUS_REVIEWING, user_id=user_id, clear_error=True)
+        set_task_status(session_id, "pending", "jd_review", user_id=user_id)
         background_tasks.add_task(_end_jd_prep_background, session_id, questions, answers, preview, meta, user_id)
         return {"session_id": session_id, "mode": mode, "status": "pending"}
 
@@ -579,7 +774,7 @@ async def end_interview(
     pending, or previously failed. For batch modes, fresh answers in the body
     override anything already persisted (preserves the old "resubmit" flow).
     """
-    session = get_session(session_id, user_id=user_id)
+    session = await asyncio.to_thread(get_session, session_id, user_id=user_id)
     if not session:
         raise HTTPException(404, "Session not found.")
 
@@ -587,7 +782,7 @@ async def end_interview(
     mode = session["mode"]
 
     if status == STATUS_REVIEWED:
-        _task_status[session_id] = {"status": "done", "type": _mode_task_type(mode)}
+        set_task_status(session_id, "done", _mode_task_type(mode), user_id=user_id)
         return {"session_id": session_id, "mode": mode, "status": "done"}
 
     if status == STATUS_REVIEWING:
@@ -598,15 +793,15 @@ async def end_interview(
     answers_override: list | None = None
     if mode in (InterviewMode.TOPIC_DRILL.value, InterviewMode.JD_PREP.value):
         answers_override = body.answers if body and body.answers else []
-        save_drill_answers(session_id, answers_override, user_id=user_id)
+        await asyncio.to_thread(save_drill_answers, session_id, answers_override, user_id=user_id)
 
     # Flip ongoing → ended before dispatching review so the session is always
     # visible in history even if review generation later crashes.
     if status == STATUS_ONGOING:
-        update_session_status(session_id, STATUS_ENDED, user_id=user_id)
+        await asyncio.to_thread(update_session_status, session_id, STATUS_ENDED, user_id=user_id)
         session["status"] = STATUS_ENDED
 
-    return _dispatch_review(session_id, session, user_id, background_tasks, answers_override=answers_override)
+    return await _dispatch_review(session_id, session, user_id, background_tasks, answers_override=answers_override)
 
 
 def _mode_task_type(mode: str) -> str:
@@ -628,7 +823,7 @@ async def generate_session_review(
     Accepts sessions in ended / review_failed states. Refuses ongoing sessions
     (user should call /interview/end first) and no-ops on already reviewed ones.
     """
-    session = get_session(session_id, user_id=user_id)
+    session = await asyncio.to_thread(get_session, session_id, user_id=user_id)
     if not session:
         raise HTTPException(404, "Session not found.")
 
@@ -636,7 +831,7 @@ async def generate_session_review(
     mode = session["mode"]
 
     if status == STATUS_REVIEWED:
-        _task_status[session_id] = {"status": "done", "type": _mode_task_type(mode)}
+        set_task_status(session_id, "done", _mode_task_type(mode), user_id=user_id)
         return {"session_id": session_id, "mode": mode, "status": "done"}
     if status == STATUS_REVIEWING:
         return {"session_id": session_id, "mode": mode, "status": "pending"}
@@ -645,7 +840,7 @@ async def generate_session_review(
     if status not in (STATUS_ENDED, STATUS_REVIEW_FAILED):
         raise HTTPException(400, f"当前状态 {status} 不支持重新生成复盘。")
 
-    return _dispatch_review(session_id, session, user_id, background_tasks)
+    return await _dispatch_review(session_id, session, user_id, background_tasks)
 
 
 @router.get("/interview/session/{session_id}/resume")
@@ -658,8 +853,8 @@ async def get_session_for_resume(
     For resume-mode chats, also checks whether the LangGraph checkpoint can
     still drive another turn (can_continue=True ⇒ user can keep answering).
     """
-    expire_stale_reviewing(user_id=user_id)
-    session = get_session(session_id, user_id=user_id)
+    await asyncio.to_thread(expire_stale_reviewing, user_id=user_id)
+    session = await asyncio.to_thread(get_session, session_id, user_id=user_id)
     if not session:
         raise HTTPException(404, "Session not found.")
 
@@ -788,7 +983,7 @@ async def generate_reference_answer(body: dict, user_id: str = Depends(get_curre
     if not session_id or question_id is None:
         raise HTTPException(400, "session_id and question_id are required")
 
-    session = get_session(session_id, user_id=user_id)
+    session = await asyncio.to_thread(get_session, session_id, user_id=user_id)
     if not session:
         raise HTTPException(404, "Session not found.")
 
@@ -809,22 +1004,18 @@ async def generate_reference_answer(body: dict, user_id: str = Depends(get_curre
         raise HTTPException(400, "Session missing topic or question text.")
 
     from backend.indexer import retrieve_topic_context
-    from backend.llm_provider import get_langchain_llm
-    from backend.prompts.interviewer import REFERENCE_ANSWER_PROMPT
 
-    topics = load_topics(user_id)
+    topics = await asyncio.to_thread(load_topics, user_id)
     topic_name = topics.get(topic, {}).get("name", topic)
-    refs = retrieve_topic_context(topic, question_text, user_id, top_k=3)
+    refs = await asyncio.to_thread(retrieve_topic_context, topic, question_text, user_id, 3)
     knowledge_context = "\n\n".join(refs) if refs else "（暂无参考材料）"
 
-    prompt = REFERENCE_ANSWER_PROMPT.format(
-        topic_name=topic_name,
-        question=question_text,
-        knowledge_context=knowledge_context,
+    answer = await asyncio.to_thread(
+        _generate_reference_answer_sync,
+        topic_name,
+        question_text,
+        knowledge_context,
+        user_id,
     )
-
-    llm = get_langchain_llm(user_id)
-    response = llm.invoke([HumanMessage(content=prompt)])
-    answer = response.content.strip()
-    save_reference_answer(session_id, qid, answer, user_id=user_id)
+    await asyncio.to_thread(save_reference_answer, session_id, qid, answer, user_id=user_id)
     return {"reference_answer": answer, "cached": False}

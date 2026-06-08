@@ -6,8 +6,9 @@ import shutil
 import sqlite3
 from pathlib import Path
 
-from backend.config import settings
 from backend.auth import init_users_table, _hash_password
+from backend.config import settings
+from backend.storage import open_sqlite
 
 DEFAULT_USER_ID = "default0"
 DEFAULT_EMAIL = "default@techspar.local"
@@ -29,7 +30,7 @@ def migrate_database():
         print(f"Database not found at {DB_PATH}, skipping DB migration.")
         return
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = open_sqlite(DB_PATH)
 
     tables = [
         ("sessions", "user_id", f"'{DEFAULT_USER_ID}'"),
@@ -65,7 +66,7 @@ def create_default_user():
     """Create the default user account for existing data."""
     init_users_table()
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = open_sqlite(DB_PATH)
     conn.row_factory = sqlite3.Row
     existing = conn.execute("SELECT id FROM users WHERE id = ?", (DEFAULT_USER_ID,)).fetchone()
     if existing:

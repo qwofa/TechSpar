@@ -1,8 +1,14 @@
 """Authentication and root routes."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from backend.auth import authenticate_user, create_token, create_user
+from backend.auth import (
+    authenticate_user,
+    create_token,
+    create_user,
+    get_current_user,
+    get_user_by_id,
+)
 from backend.config import settings
 from backend.models import LoginRequest, RegisterRequest
 
@@ -29,6 +35,14 @@ def login(req: LoginRequest):
         raise HTTPException(401, "Invalid email or password")
     token = create_token(user["id"])
     return {"token": token, "user": user}
+
+
+@router.get("/auth/me")
+def current_user(user_id: str = Depends(get_current_user)):
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(401, "Invalid token")
+    return {"user": user}
 
 
 @router.get("/")

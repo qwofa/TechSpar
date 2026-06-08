@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle2, FileText, Loader2, Upload, User, Users } from "lucide-react";
-import { transcribeRecording, analyzeRecording } from "../api/interview";
-import { useTaskStatus } from "../contexts/TaskStatusContext";
+import { analyzeRecording, getRecordingTranscriptionStatus, transcribeRecording } from "../api/interview";
+import { useTaskStatus } from "../contexts/taskStatusShared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +80,7 @@ export default function RecordingAnalysis() {
   const [company, setCompany] = useState("");
   const [position, setPosition] = useState("");
   const [transcribing, setTranscribing] = useState(false);
+  const [transcriptionTaskId, setTranscriptionTaskId] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
@@ -96,6 +97,8 @@ export default function RecordingAnalysis() {
     if (!file) return;
     setAudioFile(file);
     setTranscript("");
+    setTranscribing(false);
+    setTranscriptionTaskId(null);
     setInputTab("upload");
     setError(null);
   };
@@ -103,16 +106,43 @@ export default function RecordingAnalysis() {
   const handleTranscribe = async () => {
     if (!audioFile) return;
     setTranscribing(true);
+    setTranscriptionTaskId(null);
     setError(null);
     try {
       const data = await transcribeRecording(audioFile, recordingMode);
-      setTranscript(data.transcript || "");
+      setTranscriptionTaskId(data.task_id);
     } catch (err) {
       setError("转写失败: " + err.message);
-    } finally {
       setTranscribing(false);
     }
   };
+
+  useEffect(() => {
+    if (!transcriptionTaskId || !transcribing) return undefined;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const data = await getRecordingTranscriptionStatus(transcriptionTaskId);
+        if (cancelled || data.status !== "done") return;
+        setTranscript(data.result?.transcript || "");
+        setTranscribing(false);
+        setTranscriptionTaskId(null);
+      } catch (err) {
+        if (cancelled) return;
+        setError("转写失败: " + err.message);
+        setTranscribing(false);
+        setTranscriptionTaskId(null);
+      }
+    };
+
+    poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [transcribing, transcriptionTaskId]);
 
   const handleAnalyze = async () => {
     if (!transcript.trim()) return;

@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTaskStatus } from "../contexts/TaskStatusContext";
+import { useTaskStatus } from "../contexts/taskStatusShared";
 
 const INTERVIEW_STEPS = [
   { title: "自我介绍", desc: "基于简历背景做自我介绍，考察表达与提炼能力" },
@@ -56,8 +56,8 @@ export default function ResumeInterview() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [targetRole, setTargetRole] = useState("");
   const [targetRoleInferring, setTargetRoleInferring] = useState(false);
-  const { creatingSessionMode, setCreatingSessionMode } = useTaskStatus();
-  const loading = creatingSessionMode === "resume";
+  const { isCreatingSession, setCreatingSession } = useTaskStatus();
+  const loading = isCreatingSession("resume");
 
   const autoInferRole = async () => {
     setTargetRoleInferring(true);
@@ -114,14 +114,14 @@ export default function ResumeInterview() {
     if (!resumeFile) return;
     const role = targetRole.trim();
     if (!role) return;
-    setCreatingSessionMode("resume");
+    setCreatingSession("resume", true);
     try {
       const data = await startInterview("resume", null, { targetRole: role });
       navigate(`/interview/${data.session_id}`, { state: data });
     } catch (err) {
       alert("启动失败: " + err.message);
     } finally {
-      setCreatingSessionMode(null);
+      setCreatingSession("resume", false);
     }
   };
 

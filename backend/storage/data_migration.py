@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 from backend.config import settings
+from backend.storage import open_sqlite
 
 SCHEMA_VERSION = 1
 EXCLUDE_DIR_NAMES = {".index_cache", "__pycache__"}
@@ -82,12 +83,12 @@ def _export_filtered_db(user_id: str, dst: Path) -> None:
     Windows 上未关闭的连接持有文件锁，会让后续 tmp_db.unlink() 失败。
     """
     src_path = _db_path()
-    with closing(sqlite3.connect(str(src_path))) as src, \
-         closing(sqlite3.connect(str(dst))) as dst_conn:
+    with closing(open_sqlite(src_path)) as src, \
+         closing(open_sqlite(dst)) as dst_conn:
         src.backup(dst_conn)
         dst_conn.execute("DELETE FROM sessions WHERE user_id != ?", (user_id,))
         dst_conn.commit()
-    with closing(sqlite3.connect(str(dst))) as dst_conn:
+    with closing(open_sqlite(dst)) as dst_conn:
         dst_conn.execute("VACUUM")
 
 
@@ -174,13 +175,13 @@ def _merge_db(
     if not dst_db.exists() and rebind_user_id is None:
         dst_db.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_db, dst_db)
-        with sqlite3.connect(str(dst_db)) as c:
+        with closing(open_sqlite(dst_db)) as c:
             total = c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
         return total, 0
 
     dst_db.parent.mkdir(parents=True, exist_ok=True)
-    src = sqlite3.connect(str(src_db))
-    dst = sqlite3.connect(str(dst_db))
+    src = open_sqlite(src_db)
+    dst = open_sqlite(dst_db)
     try:
         dst.execute(_SESSIONS_DDL)
 

@@ -1,8 +1,9 @@
 """Intent Classifier — embedding 匹配 + 规则兜底，不调 LLM。"""
+import asyncio
 import re
 import logging
 
-from backend.llm_provider import get_embedding
+from backend.llm_provider import embed_text
 from backend.copilot.strategy_tree import StrategyTreeNavigator
 
 logger = logging.getLogger("uvicorn")
@@ -39,9 +40,8 @@ async def classify_intent(
     优先 embedding 匹配策略树节点，匹配不上则规则兜底。
     低置信度时 fallback 到 last_node_id（追问场景）。
     """
-    embed_model = get_embedding()
     try:
-        utt_emb = embed_model.get_text_embedding(utterance)
+        utt_emb = await asyncio.to_thread(embed_text, utterance)
     except Exception as e:
         logger.warning(f"Embedding failed, falling back to rules: {e}")
         return {"intent": rule_based_classify(utterance), "node_id": last_node_id, "confidence": 0.0, "utterance_embedding": None}

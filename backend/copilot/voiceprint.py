@@ -6,13 +6,12 @@
 设计约束：
 - 异步对外；底层 Tencent SDK 是同步的，用 asyncio.to_thread 包装
 - 未配置凭据时所有方法直接返回失败，由调用方决定是否降级
-- PCM 16kHz mono 输入会被包成 WAV 再发送，减少与 Tencent 格式枚举的耦合
+- 按腾讯云 VPR 文档直接发送 16kHz mono PCM 的 base64 数据
 """
 from __future__ import annotations
 
 import asyncio
 import base64
-import io
 import logging
 import struct
 from dataclasses import dataclass
@@ -25,8 +24,8 @@ _API_VERSION = "2019-06-14"
 _REGION = "ap-shanghai"
 _ENDPOINT = "asr.tencentcloudapi.com"
 
-# 音频格式枚举（腾讯云 VPR）：0=wav, 1=mp3, 2=m4a（我们统一走 wav）
-_VOICE_FORMAT_WAV = 0
+# 音频格式枚举（腾讯云 VPR）：0=pcm, 1=wav
+_VOICE_FORMAT_PCM = 0
 _SAMPLE_RATE_16K = 16000
 
 
@@ -35,6 +34,10 @@ class VerifyResult:
     matched: bool
     score: float  # 0.0 - 100.0
     raw: dict
+
+
+class VoiceprintClientError(RuntimeError):
+    """对外透传给上层路由的腾讯云 VPR 错误。"""
 
 
 def extract_pcm_from_wav(wav_bytes: bytes) -> bytes:
@@ -51,32 +54,6 @@ def extract_pcm_from_wav(wav_bytes: bytes) -> bytes:
             return wav_bytes[offset + 8:offset + 8 + chunk_size]
         offset += 8 + chunk_size
     raise ValueError("WAV 文件中未找到 data 块")
-
-
-def _wrap_pcm_to_wav(pcm: bytes, sample_rate: int = 16000) -> bytes:
-    """把 16-bit mono PCM 打包成 WAV 字节流（44-byte 头 + PCM 数据）。"""
-    num_channels = 1
-    bits_per_sample = 16
-    byte_rate = sample_rate * num_channels * bits_per_sample // 8
-    block_align = num_channels * bits_per_sample // 8
-    data_size = len(pcm)
-
-    buf = io.BytesIO()
-    buf.write(b"RIFF")
-    buf.write(struct.pack("<I", 36 + data_size))
-    buf.write(b"WAVE")
-    buf.write(b"fmt ")
-    buf.write(struct.pack("<I", 16))           # PCM header size
-    buf.write(struct.pack("<H", 1))            # PCM format
-    buf.write(struct.pack("<H", num_channels))
-    buf.write(struct.pack("<I", sample_rate))
-    buf.write(struct.pack("<I", byte_rate))
-    buf.write(struct.pack("<H", block_align))
-    buf.write(struct.pack("<H", bits_per_sample))
-    buf.write(b"data")
-    buf.write(struct.pack("<I", data_size))
-    buf.write(pcm)
-    return buf.getvalue()
 
 
 class VoiceprintClient:
@@ -145,14 +122,12 @@ class VoiceprintClient:
         """
         if not self.is_configured:
             return None
-        wav_bytes = _wrap_pcm_to_wav(pcm_bytes, _SAMPLE_RATE_16K)
-        data_b64 = base64.b64encode(wav_bytes).decode("ascii")
+        data_b64 = base64.b64encode(pcm_bytes).decode("ascii")
         params = {
-            "VoiceFormat": _VOICE_FORMAT_WAV,
+            "VoiceFormat": _VOICE_FORMAT_PCM,
             "SampleRate": _SAMPLE_RATE_16K,
             "SpeakerNick": speaker_nick,
             "Data": data_b64,
-            "DataLength": len(wav_bytes),
         }
         try:
             resp = await self._call("VoicePrintEnroll", params)
@@ -161,13 +136,17 @@ class VoiceprintClient:
             data = inner.get("Data") or {}
             vpid = data.get("VoicePrintId") or inner.get("VoicePrintId")
             if not vpid:
-                logger.warning(f"VPR enroll missing VoicePrintId: {inner}")
-                return None
+                message = f"腾讯云 VPR 注册返回缺少 VoicePrintId: {inner}"
+                logger.error(message)
+                raise VoiceprintClientError(message)
             logger.info(f"VPR enrolled: nick={speaker_nick} id={vpid}")
             return vpid
+        except VoiceprintClientError:
+            raise
         except Exception as e:
-            logger.error(f"VPR enroll failed: {e}")
-            return None
+            message = f"腾讯云 VPR 注册失败: {e}"
+            logger.error(message)
+            raise VoiceprintClientError(message) from e
 
     async def verify(self, voice_print_id: str, pcm_bytes: bytes) -> VerifyResult | None:
         """1:1 验证。返回 None 表示调用失败。
@@ -178,14 +157,12 @@ class VoiceprintClient:
         """
         if not self.is_configured:
             return None
-        wav_bytes = _wrap_pcm_to_wav(pcm_bytes, _SAMPLE_RATE_16K)
-        data_b64 = base64.b64encode(wav_bytes).decode("ascii")
+        data_b64 = base64.b64encode(pcm_bytes).decode("ascii")
         params = {
             "VoicePrintId": voice_print_id,
-            "VoiceFormat": _VOICE_FORMAT_WAV,
+            "VoiceFormat": _VOICE_FORMAT_PCM,
             "SampleRate": _SAMPLE_RATE_16K,
             "Data": data_b64,
-            "DataLength": len(wav_bytes),
         }
         try:
             resp = await self._call("VoicePrintVerify", params)

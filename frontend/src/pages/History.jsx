@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertTriangle, CalendarDays, ChevronRight, CircleAlert, CircleCheck, Filter, Hash, LoaderCircle, Play, RotateCw, Trash2 } from "lucide-react";
 import { getHistory, deleteSession, getInterviewTopics, retryReview } from "../api/interview";
-import { useTaskStatus } from "../contexts/TaskStatusContext";
+import { useTaskStatus } from "../contexts/taskStatusShared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,28 +46,74 @@ const STATUS_TONE_STYLE = {
   warn: "bg-orange/10 border-orange/30 text-orange",
 };
 
+const HISTORY_RETURN_KEY = "techspar.historyReturn";
+const HISTORY_RETURN_MAX_AGE_MS = 30 * 60 * 1000;
+
+function getScrollContainer() {
+  return document.querySelector("main.overflow-y-auto") || document.scrollingElement || document.documentElement;
+}
+
+function readHistoryReturnContext() {
+  try {
+    const raw = sessionStorage.getItem(HISTORY_RETURN_KEY);
+    if (!raw) return null;
+
+    const context = JSON.parse(raw);
+    const isExpired = Date.now() - Number(context.createdAt || 0) > HISTORY_RETURN_MAX_AGE_MS;
+    if (context.source !== "history" || isExpired) {
+      sessionStorage.removeItem(HISTORY_RETURN_KEY);
+      return null;
+    }
+
+    return context;
+  } catch {
+    sessionStorage.removeItem(HISTORY_RETURN_KEY);
+    return null;
+  }
+}
+
+function saveHistoryReturnContext(context) {
+  try {
+    sessionStorage.setItem(HISTORY_RETURN_KEY, JSON.stringify(context));
+  } catch {
+    // Ignore storage failures; navigation should still work without restoration.
+  }
+}
+
+function clearHistoryReturnContext() {
+  sessionStorage.removeItem(HISTORY_RETURN_KEY);
+}
+
+function normalizeFilterValue(value, fallback = "all") {
+  return typeof value === "string" && value ? value : fallback;
+}
+
 export default function History() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { startTask } = useTaskStatus();
+  const returnContextRef = useRef(location.state?.restoreFromReview ? readHistoryReturnContext() : null);
+  const restoreContext = returnContextRef.current;
   const [sessions, setSessions] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [modeFilter, setModeFilter] = useState("all");
-  const [topicFilter, setTopicFilter] = useState("all");
+  const [modeFilter, setModeFilter] = useState(() => normalizeFilterValue(restoreContext?.filters?.modeFilter));
+  const [topicFilter, setTopicFilter] = useState(() => normalizeFilterValue(restoreContext?.filters?.topicFilter));
   const [topics, setTopics] = useState([]);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [retrying, setRetrying] = useState({});
   const hasLoadedOnceRef = useRef(false);
   const requestIdRef = useRef(0);
+  const restoredScrollRef = useRef(false);
 
   useEffect(() => {
     getInterviewTopics().then(setTopics).catch(() => {});
   }, []);
 
-  const runHistoryQuery = useCallback(async ({ offset, reset }) => {
+  const runHistoryQuery = useCallback(async ({ offset, reset, limit = PAGE_SIZE }) => {
     const requestId = ++requestIdRef.current;
 
     if (reset) {
@@ -81,7 +127,7 @@ export default function History() {
     const topic = topicFilter === "all" ? null : topicFilter;
 
     try {
-      const data = await getHistory(PAGE_SIZE, offset, mode, topic);
+      const data = await getHistory(limit, offset, mode, topic);
       if (requestId !== requestIdRef.current) return;
       setSessions((prev) => (reset ? data.items : [...prev, ...data.items]));
       setTotal(data.total);
@@ -102,8 +148,23 @@ export default function History() {
   }, [modeFilter, topicFilter]);
 
   useEffect(() => {
-    runHistoryQuery({ offset: 0, reset: true });
-  }, [runHistoryQuery]);
+    const restoreLimit = Math.max(PAGE_SIZE, Number(restoreContext?.loadedCount || 0));
+    runHistoryQuery({ offset: 0, reset: true, limit: restoreLimit });
+  }, [runHistoryQuery, restoreContext]);
+
+  useEffect(() => {
+    if (!restoreContext || loading || isRefreshing || restoredScrollRef.current) return;
+
+    restoredScrollRef.current = true;
+    const targetScrollTop = Math.max(0, Number(restoreContext.scrollTop || 0));
+
+    requestAnimationFrame(() => {
+      const scroller = getScrollContainer();
+      scroller.scrollTop = targetScrollTop;
+      clearHistoryReturnContext();
+      navigate(location.pathname, { replace: true });
+    });
+  }, [isRefreshing, loading, location.pathname, navigate, restoreContext]);
 
   const handleModeChange = (mode) => {
     if (mode !== "all" && mode !== "topic_drill") setTopicFilter("all");
@@ -117,8 +178,22 @@ export default function History() {
   // Status dictates where a row click goes. Reviewed → /review. Anything else
   // routes back into /interview so the user can continue answering or retry review.
   const openSession = (session) => {
-    if (session.status === "reviewed") navigate(`/review/${session.session_id}`);
-    else navigate(`/interview/${session.session_id}`);
+    if (session.status === "reviewed") {
+      const scroller = getScrollContainer();
+      const returnContext = {
+        source: "history",
+        sessionId: session.session_id,
+        scrollTop: scroller.scrollTop || 0,
+        loadedCount: sessions.length,
+        filters: { modeFilter, topicFilter },
+        createdAt: Date.now(),
+      };
+      saveHistoryReturnContext(returnContext);
+      navigate(`/review/${session.session_id}`, { state: { fromHistory: true } });
+      return;
+    }
+
+    navigate(`/interview/${session.session_id}`);
   };
 
   const handleRetryReview = async (event, session) => {

@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import { TaskStatusProvider } from "./contexts/TaskStatusContext";
+import { TaskStatusProvider } from "./contexts/TaskStatusContext.jsx";
 import Sidebar from "./components/Sidebar";
 import TaskNotification from "./components/TaskNotification";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -22,9 +22,23 @@ import Settings from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
 
+function AuthLoadingShell() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-6 text-text">
+      <div className="w-full max-w-sm rounded-[28px] border border-border/80 bg-card/80 p-6 text-center shadow-2xl shadow-black/20">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/25 border-t-primary" />
+        </div>
+        <div className="mt-4 text-lg font-semibold">正在连接 TechSpar</div>
+        <div className="mt-2 text-sm leading-6 text-dim">正在验证登录状态，请稍候。</div>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }) {
   const { token, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <AuthLoadingShell />;
   if (!token) return <Navigate to="/" replace />;
   return children;
 }
@@ -39,14 +53,14 @@ function ProviderGate({ children }) {
 
 function PublicHome() {
   const { token, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <AuthLoadingShell />;
   if (token) return <Navigate to="/profile" replace />;
   return <Landing />;
 }
 
 function AuthPage() {
   const { token, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <AuthLoadingShell />;
   if (token) return <Navigate to="/" replace />;
   return <Login />;
 }

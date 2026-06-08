@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, NavLink } from "react-router-dom";
 import {
   User, BookOpen, GitFork, Clock, Mic, BriefcaseBusiness, Brain,
   Target, FileText, Settings as SettingsIcon,
@@ -58,9 +58,9 @@ export default function Sidebar() {
 
   const navItem = ({ path, label, icon: Icon }) => {
     const active = isActive(path);
-    const btn = (
-      <button
-        onClick={() => navigate(path)}
+    const link = (
+      <NavLink
+        to={path}
         className={cn(
           "flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-[13px] transition-all duration-300 text-left group relative overflow-hidden",
           active
@@ -75,18 +75,18 @@ export default function Sidebar() {
         )}
         <Icon size={18} className={cn("shrink-0 relative z-10 transition-transform duration-300", active ? "text-primary" : "text-dim group-hover:text-primary group-hover:scale-[1.15]")} />
         {!collapsed && <span className="truncate relative z-10 transition-transform duration-300 group-hover:translate-x-1">{label}</span>}
-      </button>
+      </NavLink>
     );
 
     if (collapsed) {
       return (
         <Tooltip key={path} delayDuration={0}>
-          <TooltipTrigger asChild>{btn}</TooltipTrigger>
+          <TooltipTrigger asChild>{link}</TooltipTrigger>
           <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
         </Tooltip>
       );
     }
-    return <div key={path}>{btn}</div>;
+    return <div key={path}>{link}</div>;
   };
 
   const nav = (

@@ -3,10 +3,25 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { BookOpen, BriefcaseBusiness, Sparkles, RotateCcw } from "lucide-react";
 import { getReview, getReferenceAnswer, startInterview, startJobPrep } from "../api/interview";
-import { useTaskStatus } from "../contexts/TaskStatusContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+
+const HISTORY_RETURN_KEY = "techspar.historyReturn";
+const HISTORY_RETURN_MAX_AGE_MS = 30 * 60 * 1000;
+
+function hasHistoryReturnContext(sessionId) {
+  try {
+    const raw = sessionStorage.getItem(HISTORY_RETURN_KEY);
+    if (!raw) return false;
+
+    const context = JSON.parse(raw);
+    const isExpired = Date.now() - Number(context.createdAt || 0) > HISTORY_RETURN_MAX_AGE_MS;
+    return context.source === "history" && context.sessionId === sessionId && !isExpired;
+  } catch {
+    return false;
+  }
+}
 
 function getScoreColor(score) {
   if (score >= 8) return { bg: "rgba(34,197,94,0.15)", color: "var(--success)" };
@@ -518,7 +533,10 @@ export default function Review() {
   const [showTranscript, setShowTranscript] = useState(false);
   const [loading, setLoading] = useState(!review && !scores);
   const [restarting, setRestarting] = useState(false);
-  const { setCreatingSessionMode } = useTaskStatus();
+  const showHistoryBack = Boolean(stateData.fromHistory) && hasHistoryReturnContext(sessionId);
+  const handleBackToHistory = () => {
+    navigate("/history", { state: { restoreFromReview: true } });
+  };
 
   const handleRestart = async () => {
     const currentMode = mode || stateData.mode;
@@ -529,7 +547,7 @@ export default function Review() {
       if (currentMode === "jd_prep") {
         const m = meta || stateData.meta || {};
         data = await startJobPrep({
-          jd_text: m.jd_text,
+          jd_text: m.jd_text || m.jd_excerpt || m.preview?.jd_excerpt || "",
           company: m.company,
           position: m.position,
           use_resume: m.use_resume,
@@ -661,6 +679,11 @@ export default function Review() {
           <Button variant="gradient" onClick={handleRestart} disabled={restarting}>
             <RotateCcw size={15} className={restarting ? "animate-spin" : ""} />
             {restarting ? "正在生成题目..." : "再次练习"}
+          </Button>
+        )}
+        {showHistoryBack && (
+          <Button variant="outline" onClick={handleBackToHistory}>
+            返回
           </Button>
         )}
         <Button variant="outline" onClick={() => navigate("/")}>

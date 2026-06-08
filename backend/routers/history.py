@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.auth import get_current_user
-from backend.runtime import _task_status
+from backend.runtime import get_task_status as read_task_status
 from backend.storage.sessions import (
     STATUS_REVIEW_FAILED,
     STATUS_REVIEWED,
@@ -36,7 +36,7 @@ async def get_task_status(task_id: str, user_id: str = Depends(get_current_user)
     hangs, so when there's no live "done"/"error" to report we reconcile against
     the persisted session — the source of truth — expiring stale reviews first.
     """
-    task = _task_status.get(task_id)
+    task = read_task_status(task_id, user_id=user_id)
     if not task or task.get("status") not in ("done", "error"):
         expire_stale_reviewing(user_id=user_id)
         session = get_session(task_id, user_id=user_id)
@@ -46,7 +46,9 @@ async def get_task_status(task_id: str, user_id: str = Depends(get_current_user)
             return {"task_id": task_id, "status": "error", "result": session.get("review_error")}
     if not task:
         raise HTTPException(404, "Task not found.")
-    return {"task_id": task_id, **task}
+
+    payload = {key: value for key, value in task.items() if key != "user_id"}
+    return {"task_id": task_id, **payload}
 
 
 @router.get("/interview/history")

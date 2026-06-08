@@ -7,6 +7,7 @@ from datetime import datetime
 import numpy as np
 
 from backend.config import settings
+from backend.storage import open_sqlite
 from backend.vector_memory import _embed, _serialize, _deserialize, _cosine_similarity
 
 DB_PATH = settings.db_path
@@ -14,10 +15,7 @@ SIMILARITY_THRESHOLD = 0.65
 
 
 def _get_conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+    return open_sqlite(DB_PATH)
 
 
 _QUESTION_EMB_DDL = """

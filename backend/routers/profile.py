@@ -10,7 +10,7 @@ from backend.auth import get_current_user
 from backend.config import settings
 from backend.indexer import load_topics
 from backend.memory import get_profile
-from backend.runtime import _task_status
+from backend.runtime import get_task_status, set_task_status
 from backend.storage.sessions import list_sessions_by_topic
 
 logger = logging.getLogger("uvicorn")
@@ -120,20 +120,22 @@ def _generate_retrospective_background(task_id: str, topic: str, user_id: str):
         profile["topic_mastery"][topic]["retrospective_at"] = generated_at
         _save_profile(profile, user_id)
 
-        _task_status[task_id] = {
-            "status": "done",
-            "type": "retrospective",
-            "result": {
+        set_task_status(
+            task_id,
+            "done",
+            "retrospective",
+            user_id=user_id,
+            result={
                 "topic": topic,
                 "topic_name": topic_name,
                 "retrospective": retrospective,
                 "retrospective_at": generated_at,
                 "session_count": len(sessions),
             },
-        }
+        )
         logger.info("Retrospective generated for topic %s", topic)
     except Exception as exc:
-        _task_status[task_id] = {"status": "error", "type": "retrospective"}
+        set_task_status(task_id, "error", "retrospective", user_id=user_id)
         logger.error("Retrospective failed for topic %s: %s", topic, exc)
 
 
@@ -149,10 +151,10 @@ async def generate_retrospective(
         raise HTTPException(400, "该领域暂无训练记录")
 
     task_id = f"retro_{topic}_{user_id[:8]}"
-    existing = _task_status.get(task_id)
+    existing = get_task_status(task_id, user_id=user_id)
     if existing and existing.get("status") == "pending":
         return {"task_id": task_id, "status": "pending"}
 
-    _task_status[task_id] = {"status": "pending", "type": "retrospective"}
+    set_task_status(task_id, "pending", "retrospective", user_id=user_id)
     background_tasks.add_task(_generate_retrospective_background, task_id, topic, user_id)
     return {"task_id": task_id, "status": "pending"}

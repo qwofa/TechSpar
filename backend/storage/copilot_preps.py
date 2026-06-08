@@ -4,14 +4,13 @@ import sqlite3
 from datetime import datetime
 
 from backend.config import settings
+from backend.storage import open_sqlite
 
 DB_PATH = settings.db_path
 
 
 def _get_conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = open_sqlite(DB_PATH)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS copilot_preps (
             prep_id   TEXT PRIMARY KEY,

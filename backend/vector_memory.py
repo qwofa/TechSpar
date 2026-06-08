@@ -14,6 +14,7 @@ import numpy as np
 
 from backend.config import settings
 from backend.llm_provider import get_embedding
+from backend.storage import open_sqlite
 
 logger = logging.getLogger("uvicorn")
 
@@ -24,10 +25,7 @@ TIME_DECAY_WEIGHT = 0.3      # max 30% score reduction from age
 
 
 def _get_conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+    return open_sqlite(DB_PATH)
 
 
 def init_memory_table():

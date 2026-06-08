@@ -6,15 +6,15 @@ import { getTopics, startInterview } from "../api/interview";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTaskStatus } from "../contexts/TaskStatusContext";
+import { useTaskStatus } from "../contexts/taskStatusShared";
 
 export default function TopicDrill() {
   const navigate = useNavigate();
   const [topics, setTopics] = useState({});
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [pageLoading, setPageLoading] = useState(true);
-  const { creatingSessionMode, setCreatingSessionMode } = useTaskStatus();
-  const loading = creatingSessionMode === "topic_drill";
+  const { isCreatingSession, setCreatingSession } = useTaskStatus();
+  const loading = isCreatingSession("topic_drill");
 
   useEffect(() => {
     getTopics()
@@ -25,14 +25,14 @@ export default function TopicDrill() {
 
   const handleStart = async () => {
     if (!selectedTopic) return;
-    setCreatingSessionMode("topic_drill");
+    setCreatingSession("topic_drill", true);
     try {
       const data = await startInterview("topic_drill", selectedTopic);
       navigate(`/interview/${data.session_id}`, { state: data });
     } catch (err) {
       alert("启动失败: " + err.message);
     } finally {
-      setCreatingSessionMode(null);
+      setCreatingSession("topic_drill", false);
     }
   };
 

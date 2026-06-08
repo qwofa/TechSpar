@@ -1,10 +1,11 @@
 """策略树数据结构、embedding 预计算与节点匹配。"""
+import asyncio
 import json
 import logging
 import numpy as np
 from typing import Any
 
-from backend.llm_provider import get_embedding
+from backend.llm_provider import embed_text, embed_texts
 
 logger = logging.getLogger("uvicorn")
 
@@ -21,18 +22,22 @@ class StrategyTreeNavigator:
 
     async def precompute_embeddings(self):
         """预计算所有节点 sample_questions 的 embedding。"""
-        embed_model = get_embedding()
         for node_id, node in self.nodes.items():
             questions = node.get("sample_questions", [])
             if not questions:
                 continue
-            node_embs = []
-            for q in questions:
-                try:
-                    emb = embed_model.get_text_embedding(q)
-                    node_embs.append((q, emb))
-                except Exception as e:
-                    logger.warning(f"Failed to embed question '{q[:30]}...': {e}")
+            try:
+                vectors = await asyncio.to_thread(embed_texts, questions)
+                node_embs = list(zip(questions, vectors, strict=False))
+            except Exception as e:
+                logger.warning(f"Batch embedding failed for node '{node_id}': {e}")
+                node_embs = []
+                for q in questions:
+                    try:
+                        emb = await asyncio.to_thread(embed_text, q)
+                        node_embs.append((q, emb))
+                    except Exception as inner_exc:
+                        logger.warning(f"Failed to embed question '{q[:30]}...': {inner_exc}")
             self._embeddings[node_id] = node_embs
         logger.info(f"Precomputed embeddings for {len(self._embeddings)} strategy tree nodes")
 

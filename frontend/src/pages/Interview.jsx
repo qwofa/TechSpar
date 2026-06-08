@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import { Check, Minus, Star } from "lucide-react";
 import ChatBubble from "../components/ChatBubble";
 import { sendMessage, sendMessageStream, endInterview, retryReview, getResumableSession } from "../api/interview";
-import { useTaskStatus } from "../contexts/TaskStatusContext";
+import { useTaskStatus } from "../contexts/taskStatusShared";
 import useVoiceInput from "../hooks/useVoiceInput";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

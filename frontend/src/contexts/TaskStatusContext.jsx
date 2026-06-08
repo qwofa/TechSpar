@@ -1,7 +1,6 @@
-import { createContext, useContext, useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { getTaskStatus } from "../api/interview";
-
-const TaskStatusContext = createContext(null);
+import { TaskStatusContext } from "./taskStatusShared";
 
 const POLL_INTERVAL = 3000;
 
@@ -14,6 +13,13 @@ export function TaskStatusProvider({ children }) {
       clearInterval(timersRef.current[taskId]);
       delete timersRef.current[taskId];
     }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      Object.values(timersRef.current).forEach(clearInterval);
+      timersRef.current = {};
+    };
   }, []);
 
   const startTask = useCallback((id, type, label) => {
@@ -43,16 +49,38 @@ export function TaskStatusProvider({ children }) {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   }, [stopPolling]);
 
-  // Global state to track interview creation across route navigations
+  const [creatingSessions, setCreatingSessions] = useState({});
   const [creatingSessionMode, setCreatingSessionMode] = useState(null);
 
+  const setCreatingSession = useCallback((key, active) => {
+    setCreatingSessions((prev) => {
+      if (active) return { ...prev, [key]: true };
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
+  const isCreatingSession = useCallback(
+    (key) => Boolean(creatingSessions[key]),
+    [creatingSessions]
+  );
+
   return (
-    <TaskStatusContext.Provider value={{ tasks, startTask, dismissTask, creatingSessionMode, setCreatingSessionMode }}>
+    <TaskStatusContext.Provider
+      value={{
+        tasks,
+        startTask,
+        dismissTask,
+        creatingSessions,
+        setCreatingSession,
+        isCreatingSession,
+        creatingSessionMode,
+        setCreatingSessionMode,
+      }}
+    >
       {children}
     </TaskStatusContext.Provider>
   );
-}
-
-export function useTaskStatus() {
-  return useContext(TaskStatusContext);
 }

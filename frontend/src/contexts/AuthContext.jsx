@@ -2,17 +2,27 @@ import { createContext, useContext, useState, useEffect } from "react";
 
 const AuthContext = createContext(null);
 
+function readStoredUser() {
+  const stored = localStorage.getItem("user");
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    localStorage.removeItem("user");
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(readStoredUser);
   const [token, setToken] = useState(() => localStorage.getItem("token"));
   const [loading, setLoading] = useState(() => Boolean(localStorage.getItem("token")));
-  // 用户尚未配齐自己的 LLM/Embedding → 进首登引导。由 /api/settings 的 configured 决定。
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   function login(tokenStr, userData) {
     localStorage.setItem("token", tokenStr);
     localStorage.setItem("user", JSON.stringify(userData));
-    setLoading(true);  // re-validate + load provider status before routing
+    setLoading(true);
     setToken(tokenStr);
     setUser(userData);
   }
@@ -22,30 +32,43 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("user");
     setToken(null);
     setUser(null);
+    setLoading(false);
     setNeedsOnboarding(false);
   }
 
   useEffect(() => {
-    if (!token) return;  // logout already cleared user/state; nothing to load
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     const headers = { Authorization: `Bearer ${token}` };
-    Promise.all([
-      fetch("/api/profile", { headers }),
-      fetch("/api/settings", { headers }),
-    ])
-      .then(async ([profileRes, settingsRes]) => {
+
+    setLoading(true);
+    fetch("/api/auth/me", { headers })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Invalid session");
+        return res.json();
+      })
+      .then((data) => {
         if (cancelled) return;
-        if (!profileRes.ok) {
-          logout();
-          return;
-        }
-        const stored = localStorage.getItem("user");
-        if (stored) setUser(JSON.parse(stored));
-        if (settingsRes.ok) {
-          const data = await settingsRes.json();
-          const c = data.configured || {};
-          setNeedsOnboarding(!(c.llm && c.embedding));
-        }
+        const nextUser = data.user || data;
+        localStorage.setItem("user", JSON.stringify(nextUser));
+        setUser(nextUser);
+        setLoading(false);
+
+        fetch("/api/settings", { headers })
+          .then(async (settingsRes) => {
+            if (!settingsRes.ok) return null;
+            return settingsRes.json();
+          })
+          .then((settingsData) => {
+            if (cancelled || !settingsData) return;
+            const c = settingsData.configured || {};
+            setNeedsOnboarding(!(c.llm && c.embedding));
+          })
+          .catch(() => {});
       })
       .catch(() => {
         if (!cancelled) logout();
@@ -53,6 +76,7 @@ export function AuthProvider({ children }) {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };

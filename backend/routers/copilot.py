@@ -56,14 +56,14 @@ async def start_copilot_prep(
 ):
     """启动 Copilot Prep Phase（后台异步执行）。"""
     prep_id = uuid.uuid4().hex[:12]
-    prep_store.create_prep(prep_id, user_id, company, position, jd_text)
+    await asyncio.to_thread(prep_store.create_prep, prep_id, user_id, company, position, jd_text)
 
     async def _run_prep():
         from backend.graphs.copilot_prep import run_copilot_prep
 
         try:
             async def on_progress(text):
-                prep_store.update_progress(prep_id, text)
+                await asyncio.to_thread(prep_store.update_progress, prep_id, text)
 
             result = await run_copilot_prep(
                 jd_text=jd_text,
@@ -72,14 +72,14 @@ async def start_copilot_prep(
                 position=position,
                 on_progress=on_progress,
             )
-            prep_store.set_done(prep_id, result)
+            await asyncio.to_thread(prep_store.set_done, prep_id, result)
             try:
                 await _update_copilot_profile(result.get("fit_report", {}), position, user_id)
             except Exception as exc:
                 logger.warning("Copilot profile write-back failed: %s", exc)
         except Exception as exc:
             logger.error("Copilot prep failed: %s", exc, exc_info=True)
-            prep_store.set_error(prep_id, str(exc))
+            await asyncio.to_thread(prep_store.set_error, prep_id, str(exc))
 
     background_tasks.add_task(_run_prep)
     return {"prep_id": prep_id}
@@ -88,7 +88,7 @@ async def start_copilot_prep(
 @rest_router.get("/copilot/preps")
 async def list_copilot_preps(user_id: str = Depends(get_current_user)):
     """列出当前用户的所有 Copilot Prep 会话。"""
-    rows = prep_store.list_preps(user_id)
+    rows = await asyncio.to_thread(prep_store.list_preps, user_id)
     return [
         {
             "prep_id": row["prep_id"],
@@ -106,7 +106,8 @@ async def list_copilot_preps(user_id: str = Depends(get_current_user)):
 @rest_router.delete("/copilot/prep/{prep_id}")
 async def delete_copilot_prep(prep_id: str, user_id: str = Depends(get_current_user)):
     """删除一个 Copilot Prep 会话。"""
-    if not prep_store.delete_prep(prep_id, user_id):
+    deleted = await asyncio.to_thread(prep_store.delete_prep, prep_id, user_id)
+    if not deleted:
         raise HTTPException(404, "Prep session not found")
     return {"ok": True}
 
@@ -114,7 +115,7 @@ async def delete_copilot_prep(prep_id: str, user_id: str = Depends(get_current_u
 @rest_router.get("/copilot/prep/{prep_id}")
 async def get_copilot_prep_status(prep_id: str, user_id: str = Depends(get_current_user)):
     """查询 Copilot Prep 进度和结果。"""
-    data = prep_store.get_prep(prep_id, user_id)
+    data = await asyncio.to_thread(prep_store.get_prep, prep_id, user_id)
     if not data:
         raise HTTPException(404, "Prep session not found")
 
@@ -139,7 +140,7 @@ async def get_copilot_prep_status(prep_id: str, user_id: str = Depends(get_curre
 @rest_router.get("/copilot/prep/{prep_id}/tree")
 async def get_copilot_strategy_tree(prep_id: str, user_id: str = Depends(get_current_user)):
     """获取策略树（前端可视化用）。"""
-    data = prep_store.get_prep(prep_id, user_id)
+    data = await asyncio.to_thread(prep_store.get_prep, prep_id, user_id)
     if not data or data["status"] != "done" or not data.get("result"):
         raise HTTPException(404, "Prep not ready")
     return data["result"].get("question_strategy_tree", {})
@@ -241,7 +242,7 @@ async def _init_copilot_session(
     from backend.copilot import voiceprint_store
     from backend.copilot.strategy_tree import StrategyTreeNavigator
 
-    prep_data = prep_store.get_prep_by_id(prep_id)
+    prep_data = await asyncio.to_thread(prep_store.get_prep_by_id, prep_id)
     if not prep_data or prep_data["status"] != "done" or not prep_data.get("result"):
         raise ValueError("Prep session not ready")
 

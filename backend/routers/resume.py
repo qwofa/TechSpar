@@ -1,5 +1,6 @@
 """Resume and speech-to-text routes."""
 
+import asyncio
 import re
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -26,6 +27,14 @@ def _sanitize_filename(filename: str) -> str:
     return base
 
 
+def _replace_resume_file(resume_dir, dest, content: bytes) -> None:
+    resume_dir.mkdir(parents=True, exist_ok=True)
+    for old in resume_dir.iterdir():
+        if old.is_file():
+            old.unlink()
+    dest.write_bytes(content)
+
+
 @router.get("/resume/status")
 def resume_status(user_id: str = Depends(get_current_user)):
     """Check if a resume file exists."""
@@ -50,19 +59,13 @@ async def upload_resume(file: UploadFile = File(...), user_id: str = Depends(get
         raise HTTPException(400, "Only PDF files are supported.")
 
     resume_dir = settings.user_resume_path(user_id)
-    resume_dir.mkdir(parents=True, exist_ok=True)
-
-    for old in resume_dir.iterdir():
-        if old.is_file():
-            old.unlink()
-
     safe_filename = _sanitize_filename(file.filename)
     dest = resume_dir / safe_filename
     content = await file.read()
-    dest.write_bytes(content)
+    await asyncio.to_thread(_replace_resume_file, resume_dir, dest, content)
 
     # Drop stale resume vectors; the next query_resume lazily re-ingests the new PDF.
-    invalidate_resume(user_id)
+    await asyncio.to_thread(invalidate_resume, user_id)
 
     return {"ok": True, "filename": file.filename, "size": len(content)}
 
@@ -78,7 +81,7 @@ async def transcribe(file: UploadFile = File(...), user_id: str = Depends(get_cu
         from backend.transcribe import transcribe_short
 
         suffix = "." + (file.filename or "audio.webm").rsplit(".", 1)[-1]
-        text = transcribe_short(audio_bytes, suffix=suffix)
+        text = await asyncio.to_thread(transcribe_short, audio_bytes, suffix=suffix)
         return {"text": text}
     except Exception as exc:
         raise HTTPException(500, f"Transcription failed: {exc}")

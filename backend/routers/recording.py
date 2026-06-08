@@ -11,33 +11,61 @@ from backend.auth import get_current_user
 from backend.memory import extract_behavior_ops, llm_update_profile
 from backend.models import RecordingAnalyzeRequest
 from backend.review_formatters import format_drill_review, format_solo_review
-from backend.runtime import _task_status
+from backend.runtime import set_task_status
 from backend.storage.sessions import create_session, save_drill_answers, save_review
 
 logger = logging.getLogger("uvicorn")
 router = APIRouter(prefix="/api")
 
 
+def _transcribe_recording_background(task_id: str, audio_bytes: bytes, suffix: str, user_id: str):
+    """Background task: transcribe uploaded recording."""
+    try:
+        from backend.transcribe import transcribe_long
+
+        text = transcribe_long(audio_bytes, suffix=suffix)
+        set_task_status(
+            task_id,
+            "done",
+            "recording_transcribe",
+            user_id=user_id,
+            result={"transcript": text, "segments": []},
+        )
+        logger.info("Recording transcription done for task %s", task_id)
+    except Exception as exc:
+        set_task_status(
+            task_id,
+            "error",
+            "recording_transcribe",
+            user_id=user_id,
+            result=f"Transcription failed: {exc}",
+        )
+        logger.error("Recording transcription failed for task %s: %s", task_id, exc)
+
+
 @router.post("/recording/transcribe")
 async def recording_transcribe(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     mode: str = Form("dual"),
     user_id: str = Depends(get_current_user),
 ):
-    """Transcribe recording audio via DashScope ASR."""
+    """Submit a recording transcription task and return immediately."""
     audio_bytes = await file.read()
     if not audio_bytes:
         raise HTTPException(400, "Empty audio file.")
 
     suffix = "." + (file.filename or "audio.webm").rsplit(".", 1)[-1]
-
-    try:
-        from backend.transcribe import transcribe_long
-
-        text = transcribe_long(audio_bytes, suffix=suffix)
-        return {"transcript": text, "segments": []}
-    except Exception as exc:
-        raise HTTPException(500, f"Transcription failed: {exc}")
+    task_id = str(uuid.uuid4())
+    set_task_status(
+        task_id,
+        "pending",
+        "recording_transcribe",
+        user_id=user_id,
+        mode=mode,
+    )
+    background_tasks.add_task(_transcribe_recording_background, task_id, audio_bytes, suffix, user_id)
+    return {"task_id": task_id, "status": "pending"}
 
 
 def _analyze_recording_background(
@@ -143,10 +171,10 @@ def _analyze_recording_background(
             transcript=req_transcript, session_id=session_id,
         ))
 
-        _task_status[session_id] = {"status": "done", "type": "recording"}
+        set_task_status(session_id, "done", "recording", user_id=user_id)
         logger.info("Recording analysis done for session %s", session_id)
     except Exception as exc:
-        _task_status[session_id] = {"status": "error", "type": "recording"}
+        set_task_status(session_id, "error", "recording", user_id=user_id)
         logger.error("Recording analysis failed for session %s: %s", session_id, exc)
 
 
@@ -160,7 +188,7 @@ async def recording_analyze(
     session_id = str(uuid.uuid4())
     create_session(session_id, mode="recording", user_id=user_id)
 
-    _task_status[session_id] = {"status": "pending", "type": "recording"}
+    set_task_status(session_id, "pending", "recording", user_id=user_id)
     background_tasks.add_task(
         _analyze_recording_background,
         session_id,

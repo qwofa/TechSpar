@@ -1,4 +1,6 @@
 const API_BASE = "/api";
+const TASK_POLL_INTERVAL_MS = 1500;
+const TASK_POLL_TIMEOUT_MS = 120000;
 
 // ── Auth-aware fetch wrapper ──
 
@@ -40,6 +42,38 @@ async function extractError(res) {
     return `请求失败 (HTTP ${res.status})，请检查后端服务是否正常运行`;
   }
   return text.slice(0, 300);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForTaskResult(taskId, { timeoutMs = TASK_POLL_TIMEOUT_MS, intervalMs = TASK_POLL_INTERVAL_MS } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastTransientError = null;
+
+  while (Date.now() < deadline) {
+    let data;
+    try {
+      data = await getTaskStatus(taskId);
+    } catch (err) {
+      lastTransientError = err;
+      await sleep(intervalMs);
+      continue;
+    }
+
+    if (data.status === "done") {
+      return data.result ?? data;
+    }
+    if (data.status === "error") {
+      throw new Error(data.result || "任务执行失败");
+    }
+
+    lastTransientError = null;
+    await sleep(intervalMs);
+  }
+
+  throw lastTransientError || new Error("任务执行超时，请稍后重试");
 }
 
 // ── Speech-to-text ──
@@ -105,7 +139,11 @@ export async function startInterview(mode, topic = null, { numQuestions, diverge
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await extractError(res));
-  return res.json();
+  const data = await res.json();
+  if (data.status === "pending" && data.task_id) {
+    return waitForTaskResult(data.task_id);
+  }
+  return data;
 }
 
 export async function inferTargetRole() {
@@ -133,7 +171,11 @@ export async function startJobPrep(payload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await extractError(res));
-  return res.json();
+  const data = await res.json();
+  if (data.status === "pending" && data.task_id) {
+    return waitForTaskResult(data.task_id);
+  }
+  return data;
 }
 
 export async function sendMessage(sessionId, message) {
@@ -335,6 +377,14 @@ export async function transcribeRecording(audioBlob, mode = "dual") {
   });
   if (!res.ok) throw new Error(await extractError(res));
   return res.json();
+}
+
+export async function getRecordingTranscriptionStatus(taskId) {
+  const data = await getTaskStatus(taskId);
+  if (data.status === "error") {
+    throw new Error(data.result || "转写失败");
+  }
+  return data;
 }
 
 export async function analyzeRecording(transcript, recordingMode, company, position) {

@@ -11,6 +11,7 @@ from jose import jwt, JWTError
 
 from backend.config import settings
 from backend.preset_topics import ensure_preset_topics
+from backend.storage import open_sqlite
 
 logger = logging.getLogger("uvicorn")
 
@@ -29,10 +30,7 @@ def _verify_password(password: str, hashed: str) -> bool:
 
 
 def _get_conn() -> sqlite3.Connection:
-    settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(settings.db_path))
-    conn.row_factory = sqlite3.Row
-    return conn
+    return open_sqlite(settings.db_path)
 
 
 def init_users_table():
@@ -121,6 +119,21 @@ def is_admin_user(user_id: str) -> bool:
     if not row:
         return False
     return row["email"] == settings.default_email.lower().strip()
+
+
+def get_user_by_id(user_id: str) -> dict | None:
+    """Return public user fields for a valid user id."""
+    conn = _get_conn()
+    row = conn.execute("SELECT id, email, name FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "email": row["email"],
+        "name": row["name"],
+        "is_admin": row["email"] == settings.default_email.lower().strip(),
+    }
 
 
 def create_token(user_id: str) -> str:

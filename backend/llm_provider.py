@@ -10,6 +10,8 @@ backends (esp. local HuggingFace models) are expensive, so they are cached per
 (user, config-signature) and rebuilt only when the signature changes.
 """
 
+from threading import Lock
+
 from langchain_openai import ChatOpenAI
 
 from backend.config import (
@@ -26,6 +28,8 @@ from backend.user_context import get_current_user_id
 
 # user_key ("__global__" or user_id) → (signature, embed_instance)
 _embedding_cache: dict[str, tuple[str, object]] = {}
+_embedding_cache_lock = Lock()
+_embedding_call_locks: dict[str, Lock] = {}
 
 _DEFAULT_TEMPERATURE = 0.7
 _COPILOT_TEMPERATURE = 0.3  # Copilot 场景偏确定性
@@ -43,6 +47,20 @@ class ProviderNotConfigured(RuntimeError):
 
 def _effective_uid(user_id: str | None) -> str | None:
     return user_id if user_id is not None else get_current_user_id()
+
+
+def _embedding_cache_key(user_id: str | None = None) -> str:
+    return _effective_uid(user_id) or "__global__"
+
+
+def _get_embedding_call_lock(user_id: str | None = None) -> Lock:
+    key = _embedding_cache_key(user_id)
+    with _embedding_cache_lock:
+        lock = _embedding_call_locks.get(key)
+        if lock is None:
+            lock = Lock()
+            _embedding_call_locks[key] = lock
+        return lock
 
 
 # ── Config resolution ──
@@ -214,21 +232,47 @@ def get_embedding(user_id: str | None = None):
     """Embedding model, cached per (user, full-config signature)."""
     c = resolve_embedding_config(user_id)
     sig = _embedding_cache_sig(c)
-    key = _effective_uid(user_id) or "__global__"
-    cached = _embedding_cache.get(key)
-    if cached and cached[0] == sig:
-        return cached[1]
+    key = _embedding_cache_key(user_id)
+    with _embedding_cache_lock:
+        cached = _embedding_cache.get(key)
+        if cached and cached[0] == sig:
+            return cached[1]
+
     inst = _build_embedding(c)
-    _embedding_cache[key] = (sig, inst)
-    return inst
+    with _embedding_cache_lock:
+        cached = _embedding_cache.get(key)
+        if cached and cached[0] == sig:
+            return cached[1]
+        _embedding_cache[key] = (sig, inst)
+        return inst
+
+
+def embed_text(text: str, user_id: str | None = None) -> list[float]:
+    """Thread-safe single-text embedding for code paths that offload to worker threads."""
+    embed_model = get_embedding(user_id)
+    with _get_embedding_call_lock(user_id):
+        return embed_model.get_text_embedding(text)
+
+
+def embed_texts(texts: list[str], user_id: str | None = None) -> list[list[float]]:
+    """Thread-safe batch embedding for code paths that offload to worker threads."""
+    if not texts:
+        return []
+    embed_model = get_embedding(user_id)
+    with _get_embedding_call_lock(user_id):
+        return embed_model.get_text_embedding_batch(texts)
 
 
 def reset_embedding_cache(user_id: str | None = None):
     """Drop cached embedding(s) so the next call rebuilds. None clears all users."""
-    if user_id is None:
-        _embedding_cache.clear()
-    else:
-        _embedding_cache.pop(user_id, None)
+    with _embedding_cache_lock:
+        if user_id is None:
+            _embedding_cache.clear()
+            _embedding_call_locks.clear()
+        else:
+            key = _embedding_cache_key(user_id)
+            _embedding_cache.pop(key, None)
+            _embedding_call_locks.pop(key, None)
 
 
 # ── Optional service credentials (per-user, no global fallback) ──

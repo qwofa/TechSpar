@@ -30,7 +30,7 @@ logger = logging.getLogger("uvicorn")
 RESUME_CHUNK = "resume_chunk"
 TOPIC_CHUNK = "topic_chunk"
 
-CHUNK_SIZE = 1000       # chars per chunk (CJK-friendly; ~数百 token)
+CHUNK_SIZE = 500        # some OpenAI-compatible embedding APIs reject >512-char inputs
 CHUNK_OVERLAP = 150     # char overlap carried between adjacent chunks
 TOPIC_EXTS = {".md", ".txt", ".py"}
 
@@ -110,7 +110,7 @@ def _chunk_text(text: str) -> list[str]:
     out: list[str] = []
     step = max(1, CHUNK_SIZE - CHUNK_OVERLAP)
     for c in chunks:
-        if len(c) <= CHUNK_SIZE * 2:
+        if len(c) <= CHUNK_SIZE:
             out.append(c)
         else:
             out.extend(c[i:i + CHUNK_SIZE] for i in range(0, len(c), step))

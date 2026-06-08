@@ -48,7 +48,7 @@ async def voiceprint_enroll(
 ):
     """上传 WAV 文件注册候选人声纹。前端应录制 ≥6 秒 16kHz mono WAV。"""
     from backend.copilot import voiceprint_store
-    from backend.copilot.voiceprint import extract_pcm_from_wav
+    from backend.copilot.voiceprint import VoiceprintClientError, extract_pcm_from_wav
 
     client = voiceprint_store.get_client(user_id)
     if client is None:
@@ -66,9 +66,10 @@ async def voiceprint_enroll(
         raise HTTPException(400, "录音太短，至少 2 秒")
 
     speaker_nick = f"techspar_{user_id}"
-    voice_print_id = await client.enroll(speaker_nick, pcm_bytes)
-    if not voice_print_id:
-        raise HTTPException(500, "腾讯云声纹注册失败，请检查日志")
+    try:
+        voice_print_id = await client.enroll(speaker_nick, pcm_bytes)
+    except VoiceprintClientError as exc:
+        raise HTTPException(500, str(exc))
 
     data = voiceprint_store.load(user_id)
     data["enrollment"] = {
