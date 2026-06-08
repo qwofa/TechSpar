@@ -10,6 +10,7 @@ import {
   Target,
 } from "lucide-react";
 import { getResumeStatus, previewJobPrep, startJobPrep } from "../api/interview";
+import { useSessionLauncher } from "../hooks/useSessionLauncher";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,8 +60,9 @@ export default function JobPrep() {
   const [previewSignature, setPreviewSignature] = useState("");
   const [loadingResume, setLoadingResume] = useState(true);
   const [previewing, setPreviewing] = useState(false);
-  const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
+  const launcher = useSessionLauncher({ key: "jd_prep", navigate });
+  const starting = launcher.loading;
 
   useEffect(() => {
     getResumeStatus()
@@ -110,15 +112,8 @@ export default function JobPrep() {
   };
 
   const handleStart = async () => {
-    setStarting(true);
     setError("");
-    try {
-      const data = await startJobPrep({ ...payload, preview_data: preview });
-      navigate(`/interview/${data.session_id}`, { state: data });
-    } catch (err) {
-      setError("启动失败: " + err.message);
-      setStarting(false);
-    }
+    await launcher.launch(() => startJobPrep({ ...payload, preview_data: preview }));
   };
 
   return (
@@ -220,9 +215,9 @@ export default function JobPrep() {
             </CardContent>
           </Card>
 
-          {error && (
+          {(error || launcher.error) && (
             <div className="rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red">
-              {error}
+              {error || launcher.error}
             </div>
           )}
 

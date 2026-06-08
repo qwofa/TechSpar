@@ -18,6 +18,13 @@ from backend.graphs.job_prep import (
 from backend.graphs.review import generate_review
 from backend.graphs.topic_drill import evaluate_drill_answers, generate_drill_questions
 from backend.indexer import load_topics
+from backend.interview_control import (
+    build_resume_interview_meta,
+    enrich_resume_session_payload,
+    list_resume_interview_controls,
+    public_resume_interview_control,
+    resolve_resume_interview_control,
+)
 from backend.memory import extract_behavior_ops, get_profile, llm_update_profile, update_profile_after_interview, update_target_role
 from backend.models import (
     ChatRequest,
@@ -60,6 +67,37 @@ _EVAL_TAG_PREFIX = "<!--EVAL:"
 _EVAL_TAG_SUFFIX = "-->"
 _TOPIC_DRILL_START_TASK = "topic_drill_start"
 _JOB_PREP_START_TASK = "job_prep_start"
+
+
+@router.get("/interview/resume-controls")
+def get_resume_interview_controls():
+    return {"items": list_resume_interview_controls()}
+
+
+def _build_resume_start_payload(
+    session_id: str,
+    *,
+    topic: str | None,
+    target_role: str,
+    ai_message: str,
+    interview_control: dict,
+    meta: dict,
+) -> dict:
+    return enrich_resume_session_payload({
+        "session_id": session_id,
+        "task_id": session_id,
+        "mode": InterviewMode.RESUME.value,
+        "topic": topic,
+        "target_role": target_role,
+        "message": ai_message,
+        "interview_control": public_resume_interview_control(interview_control),
+        "meta": meta,
+        "status": "done",
+    })
+
+
+def _session_with_resume_control(session: dict) -> dict:
+    return enrich_resume_session_payload(session)
 
 
 def _generate_reference_answer_sync(topic_name: str, question_text: str, knowledge_context: str, user_id: str) -> str:
@@ -377,9 +415,18 @@ async def start_interview(
             logger.warning("Failed to update target role for user %s: %s", user_id, exc)
 
         try:
+            interview_control = resolve_resume_interview_control(req.interview_control_preset, strict=True)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        meta = build_resume_interview_meta(target_role, interview_control["id"])
+
+        try:
             graph = await asyncio.to_thread(compile_resume_interview, user_id)
             config = {"configurable": {"thread_id": session_id}}
-            result = await graph.ainvoke({"target_role": target_role}, config)
+            result = await graph.ainvoke({
+                "target_role": target_role,
+                "interview_control": interview_control,
+            }, config)
         except Exception as exc:
             logger.exception("Failed to start resume interview for user %s", user_id)
             error_msg = str(exc)
@@ -404,7 +451,7 @@ async def start_interview(
             session_id,
             req.mode.value,
             req.topic,
-            meta={"target_role": target_role},
+            meta=meta,
             user_id=user_id,
         )
         await asyncio.to_thread(append_message, session_id, "assistant", ai_message, user_id=user_id)
@@ -413,15 +460,19 @@ async def start_interview(
             "config": config,
             "mode": req.mode,
             "topic": req.topic,
+            "target_role": target_role,
+            "interview_control": public_resume_interview_control(interview_control),
+            "meta": meta,
             "user_id": user_id,
         }
-        return {
-            "session_id": session_id,
-            "mode": req.mode.value,
-            "topic": req.topic,
-            "target_role": target_role,
-            "message": ai_message,
-        }
+        return _build_resume_start_payload(
+            session_id,
+            topic=req.topic,
+            target_role=target_role,
+            ai_message=ai_message,
+            interview_control=interview_control,
+            meta=meta,
+        )
 
     raise HTTPException(400, f"Unsupported mode for this endpoint: {req.mode.value}")
 
@@ -860,6 +911,8 @@ async def get_session_for_resume(
 
     can_continue = False
     is_finished = False
+    runtime_target_role = ""
+    runtime_interview_control = None
 
     if session["mode"] == InterviewMode.RESUME.value:
         entry = await get_or_restore_resume_graph(session_id, user_id)
@@ -868,9 +921,11 @@ async def get_session_for_resume(
             values = state.values or {}
             is_finished = bool(values.get("is_finished"))
             can_continue = bool(state.next) and not is_finished
+            runtime_target_role = (values.get("target_role") or entry.get("target_role") or "").strip()
+            runtime_interview_control = values.get("interview_control") or entry.get("interview_control")
 
     meta = session.get("meta") or {}
-    return {
+    return enrich_resume_session_payload({
         "session_id": session_id,
         "mode": session["mode"],
         "topic": session.get("topic"),
@@ -878,12 +933,13 @@ async def get_session_for_resume(
         "review_error": session.get("review_error"),
         "transcript": session.get("transcript", []),
         "questions": session.get("questions", []),
-        "target_role": meta.get("target_role", ""),
+        "target_role": runtime_target_role or meta.get("target_role", ""),
+        "interview_control": runtime_interview_control,
         "meta": meta,
         "can_continue": can_continue,
         "is_finished": is_finished,
         "has_review": bool(session.get("review")),
-    }
+    })
 
 
 def _qa_transcript(questions: list, answers: list) -> str:

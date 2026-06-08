@@ -17,6 +17,7 @@
 - [题库与知识库](knowledge-base.md)
 - [专项训练怎么玩](special-training.md)
 - [简历模拟面试](resume-mock.md)
+- [面试体验分期改造方案](interview-experience-revamp.md)
 - [JD 定向备面](jd-preparation.md)
 - [面试 Copilot](copilot.md)
 - [录音复盘](recording-review.md)

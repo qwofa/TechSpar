@@ -14,6 +14,7 @@ from backend.models import ResumeInterviewState, InterviewPhase
 from backend.config import settings
 from backend.llm_provider import get_langchain_llm
 from backend.indexer import query_resume
+from backend.interview_control import build_resume_interview_control_prompt, resolve_resume_interview_control
 from backend.memory import get_profile_summary
 from backend.prompts.interviewer import RESUME_INTERVIEWER_SYSTEM
 
@@ -110,12 +111,15 @@ def _make_init_interview(user_id: str):
             profile_summary = "新用户，暂无历史数据"
 
         target_role = (state.get("target_role") or "").strip() or "候选人应聘岗位"
+        interview_control = resolve_resume_interview_control(state.get("interview_control"))
+        control_prompt = build_resume_interview_control_prompt(interview_control)
         system_prompt = RESUME_INTERVIEWER_SYSTEM.format(
             target_role=target_role,
             resume_context=resume_ctx,
             phase=InterviewPhase.GREETING.value,
             asked_questions="无",
             user_profile=profile_summary,
+            interview_control=control_prompt,
         )
 
         try:
@@ -134,6 +138,7 @@ def _make_init_interview(user_id: str):
             "messages": [response],
             "resume_context": resume_ctx,
             "target_role": target_role,
+            "interview_control": interview_control,
             "phase": InterviewPhase.GREETING.value,
             "questions_asked": [],
             "phase_question_count": 0,
@@ -174,12 +179,15 @@ def _make_interviewer_ask(user_id: str):
 
         profile_summary = await asyncio.to_thread(get_profile_summary, user_id)
         target_role = (state.get("target_role") or "").strip() or "候选人应聘岗位"
+        interview_control = resolve_resume_interview_control(state.get("interview_control"))
+        control_prompt = build_resume_interview_control_prompt(interview_control)
         system_prompt = RESUME_INTERVIEWER_SYSTEM.format(
             target_role=target_role,
             resume_context=state.get("resume_context", ""),
             phase=state.get("phase", "technical"),
             asked_questions=asked_str,
             user_profile=profile_summary,
+            interview_control=control_prompt,
         )
 
         llm = get_langchain_llm(user_id)

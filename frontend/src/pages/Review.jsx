@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { BookOpen, BriefcaseBusiness, Sparkles, RotateCcw } from "lucide-react";
 import { getReview, getReferenceAnswer, startInterview, startJobPrep } from "../api/interview";
+import { readResumeInterviewControl } from "../lib/interviewControl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -529,6 +530,7 @@ export default function Review() {
   const [topic, setTopic] = useState(stateData.topic || null);
   const [topicsCovered, setTopicsCovered] = useState(stateData.topics_covered || []);
   const [meta, setMeta] = useState(stateData.meta || {});
+  const [interviewControl, setInterviewControl] = useState(stateData.interview_control || stateData.meta?.interview_control || null);
   const [referenceAnswers, setReferenceAnswers] = useState(stateData.reference_answers || {});
   const [showTranscript, setShowTranscript] = useState(false);
   const [loading, setLoading] = useState(!review && !scores);
@@ -552,10 +554,20 @@ export default function Review() {
           position: m.position,
           use_resume: m.use_resume,
         });
+      } else if (currentMode === "resume") {
+        const m = meta || stateData.meta || {};
+        const control = readResumeInterviewControl({
+          interview_control: interviewControl,
+          meta: m,
+        });
+        data = await startInterview("resume", null, {
+          targetRole: m.target_role || stateData.target_role,
+          interviewControlPreset: control.id,
+        });
       } else {
         data = await startInterview(currentMode, topic || stateData.topic);
       }
-      navigate(`/interview/${data.session_id}`, { state: { ...data, mode: currentMode, topic: topic || stateData.topic, meta: meta || stateData.meta } });
+      navigate(`/interview/${data.session_id}`, { state: { ...data, mode: currentMode, topic: data.topic ?? topic ?? stateData.topic, meta: data.meta || meta || stateData.meta } });
     } catch (err) {
       alert("启动失败: " + err.message);
     } finally {
@@ -583,6 +595,7 @@ export default function Review() {
           const tc = data.topics_covered || data.overall?.topics_covered;
           if (tc) setTopicsCovered(tc);
           if (data.meta) setMeta(data.meta);
+          if (data.interview_control) setInterviewControl(data.interview_control);
           if (data.reference_answers) setReferenceAnswers(data.reference_answers);
           if (data.mode === "topic_drill" || data.mode === "jd_prep") {
             setAnswers(inferAnswers(data.questions || [], data.transcript || []));
@@ -614,6 +627,10 @@ export default function Review() {
   const isRecordingDual = isRecording && (stateData.recording_mode === "dual" || questions.length > 0);
   const showDrill = currentMode === "topic_drill" || isRecordingDual;
   const title = isRecording ? "录音复盘" : isJobPrep ? "JD 备面复盘" : showDrill ? "训练复盘" : "面试复盘";
+  const resumeControl = readResumeInterviewControl({
+    interview_control: interviewControl,
+    meta,
+  });
 
   return (
     <div className="flex-1 px-4 py-8 md:px-6 md:py-10 max-w-3xl mx-auto w-full">
@@ -625,6 +642,18 @@ export default function Review() {
           <div className="text-2xl md:text-[28px] font-display font-bold">{title}</div>
         </div>
         <div className="text-sm text-dim">Session: {sessionId}</div>
+        {currentMode === "resume" && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Badge variant="outline">
+              {resumeControl.name} · {resumeControl.pressure_label}
+            </Badge>
+            {(meta?.target_role || stateData.target_role) && (
+              <Badge variant="secondary">
+                {meta?.target_role || stateData.target_role}
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="stagger-children">

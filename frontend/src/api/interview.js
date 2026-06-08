@@ -1,6 +1,13 @@
 const API_BASE = "/api";
 const TASK_POLL_INTERVAL_MS = 1500;
 const TASK_POLL_TIMEOUT_MS = 120000;
+export const AUTH_EXPIRED_EVENT = "techspar:auth-expired";
+
+function notifyAuthExpired() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+  }
+}
 
 // ── Auth-aware fetch wrapper ──
 
@@ -15,9 +22,7 @@ export async function authFetch(url, options = {}) {
   const headers = authHeaders(options.headers);
   const res = await fetch(url, { ...options, headers });
   if (res.status === 401) {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.href = "/login";
+    notifyAuthExpired();
     throw new Error("Session expired");
   }
   return res;
@@ -128,11 +133,17 @@ export async function uploadResume(file) {
   return res.json();
 }
 
-export async function startInterview(mode, topic = null, { numQuestions, divergence, targetRole } = {}) {
+export async function startInterview(mode, topic = null, {
+  numQuestions,
+  divergence,
+  targetRole,
+  interviewControlPreset,
+} = {}) {
   const body = { mode, topic };
   if (numQuestions != null) body.num_questions = numQuestions;
   if (divergence != null) body.divergence = divergence;
   if (targetRole != null) body.target_role = targetRole;
+  if (interviewControlPreset != null) body.interview_control_preset = interviewControlPreset;
   const res = await authFetch(`${API_BASE}/interview/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

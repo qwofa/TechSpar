@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.auth import get_current_user
+from backend.interview_control import enrich_resume_session_payload
 from backend.runtime import get_task_status as read_task_status
 from backend.storage.sessions import (
     STATUS_REVIEW_FAILED,
@@ -25,7 +26,7 @@ async def get_review(session_id: str, user_id: str = Depends(get_current_user)):
         raise HTTPException(404, "Session not found.")
     if not session.get("review"):
         raise HTTPException(400, "Interview not yet reviewed.")
-    return session
+    return enrich_resume_session_payload(session)
 
 
 @router.get("/tasks/{task_id}")
@@ -61,7 +62,9 @@ async def get_history(
 ):
     """List past interview sessions with filtering and pagination."""
     expire_stale_reviewing(user_id=user_id)
-    return list_sessions(user_id=user_id, limit=limit, offset=offset, mode=mode, topic=topic)
+    result = list_sessions(user_id=user_id, limit=limit, offset=offset, mode=mode, topic=topic)
+    result["items"] = [enrich_resume_session_payload(item) for item in result.get("items", [])]
+    return result
 
 
 @router.delete("/interview/session/{session_id}")

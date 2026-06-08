@@ -2,13 +2,19 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, ChevronRight, CalendarDays, UploadCloud, CheckCircle2, Clock, Play, Briefcase, Sparkles } from "lucide-react";
 import { getResumeStatus, uploadResume, startInterview, getHistory, getProfile, inferTargetRole } from "../api/interview";
+import { useSessionLauncher } from "../hooks/useSessionLauncher";
+import {
+  DEFAULT_RESUME_INTERVIEW_CONTROL_ID,
+  RESUME_INTERVIEW_CONTROLS,
+  normalizeResumeInterviewControl,
+  readResumeInterviewControl,
+} from "../lib/interviewControl";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTaskStatus } from "../contexts/taskStatusShared";
 
 const INTERVIEW_STEPS = [
   { title: "自我介绍", desc: "基于简历背景做自我介绍，考察表达与提炼能力" },
@@ -56,8 +62,10 @@ export default function ResumeInterview() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [targetRole, setTargetRole] = useState("");
   const [targetRoleInferring, setTargetRoleInferring] = useState(false);
-  const { isCreatingSession, setCreatingSession } = useTaskStatus();
-  const loading = isCreatingSession("resume");
+  const [selectedControlId, setSelectedControlId] = useState(DEFAULT_RESUME_INTERVIEW_CONTROL_ID);
+  const launcher = useSessionLauncher({ key: "resume", navigate });
+  const loading = launcher.loading;
+  const selectedControl = normalizeResumeInterviewControl(selectedControlId);
 
   const autoInferRole = async () => {
     setTargetRoleInferring(true);
@@ -114,15 +122,10 @@ export default function ResumeInterview() {
     if (!resumeFile) return;
     const role = targetRole.trim();
     if (!role) return;
-    setCreatingSession("resume", true);
-    try {
-      const data = await startInterview("resume", null, { targetRole: role });
-      navigate(`/interview/${data.session_id}`, { state: data });
-    } catch (err) {
-      alert("启动失败: " + err.message);
-    } finally {
-      setCreatingSession("resume", false);
-    }
+    await launcher.launch(() => startInterview("resume", null, {
+      targetRole: role,
+      interviewControlPreset: selectedControl.id,
+    }));
   };
 
   return (
@@ -230,6 +233,54 @@ export default function ResumeInterview() {
             <div className="text-[12px] text-dim mt-1.5">面试官会按该岗位方向调整考察重点与追问深度</div>
           </div>
 
+          <div className="mt-6 pt-5 border-t border-border/50">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <div className="text-[13px] font-semibold text-text">面试挡位</div>
+                <div className="mt-1 text-[12px] text-dim">挡位会写入本次会话，并影响追问压力、节奏和复盘上下文</div>
+              </div>
+              <Badge variant="outline" className="shrink-0">
+                {selectedControl.pressure_label} · {selectedControl.pace_label}
+              </Badge>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {RESUME_INTERVIEW_CONTROLS.map((control) => {
+                const active = selectedControlId === control.id;
+                return (
+                  <button
+                    key={control.id}
+                    type="button"
+                    className={cn(
+                      "rounded-2xl border p-4 text-left transition-all bg-card/55 hover:border-primary/35 hover:bg-primary/5",
+                      active ? "border-primary/45 bg-primary/10 shadow-sm shadow-primary/10" : "border-border/70"
+                    )}
+                    onClick={() => setSelectedControlId(control.id)}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold text-text">{control.name}</div>
+                      <Badge variant={active ? "default" : "secondary"}>{control.short_name}</Badge>
+                    </div>
+                    <div className="mt-1 text-[13px] font-medium text-primary">{control.headline}</div>
+                    <div className="mt-2 text-[12px] leading-5 text-dim">{control.description}</div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {control.visible_focus.map((item) => (
+                        <span key={item} className="rounded-full bg-hover px-2 py-1 text-[11px] text-dim">
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {launcher.error && (
+            <div className="mt-5 rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red">
+              {launcher.error}
+            </div>
+          )}
+
           <div className="mt-6 pt-5 border-t border-border/70 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-[13px] text-dim w-full md:w-auto text-center md:text-left">
               准备开始迎接挑战？点击右侧正式进入模拟环境
@@ -322,6 +373,7 @@ export default function ResumeInterview() {
               <div className="flex flex-col gap-3.5">
                 {history.map((s) => {
                   const reviewed = (s.status || "reviewed") === "reviewed";
+                  const control = readResumeInterviewControl(s);
                   const title = reviewed
                     ? "简历沉浸式死磕"
                     : s.status === "review_failed" ? "复盘生成失败，点击重试"
@@ -344,6 +396,8 @@ export default function ResumeInterview() {
                         <div className="flex items-center gap-1.5 text-[12px] text-dim font-medium tabular-nums">
                           <Clock size={12} className="opacity-80" />
                           {formatDate(s.created_at)}
+                          <span className="text-border">·</span>
+                          <span>{control.short_name}</span>
                         </div>
                       </div>
                     </div>

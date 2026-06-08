@@ -5,6 +5,7 @@ import { Check, Minus, Star } from "lucide-react";
 import ChatBubble from "../components/ChatBubble";
 import { sendMessage, sendMessageStream, endInterview, retryReview, getResumableSession } from "../api/interview";
 import { useTaskStatus } from "../contexts/taskStatusShared";
+import { readResumeInterviewControl } from "../lib/interviewControl";
 import useVoiceInput from "../hooks/useVoiceInput";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,8 @@ export default function Interview() {
           target_role: data.target_role,
           questions: data.questions,
           meta: data.meta,
+          interview_control: data.interview_control,
+          interview_control_preset: data.interview_control_preset,
           company: data.meta?.company,
           position: data.meta?.position,
         });
@@ -309,6 +312,8 @@ export default function Interview() {
     </button>
   );
 
+  const resumeControl = readResumeInterviewControl(initData);
+
   // Bootstrap gate: show a skeleton while the resume payload is in flight, or
   // an error view if the session doesn't exist / can't be loaded.
   if (!initData) {
@@ -520,6 +525,11 @@ export default function Interview() {
         <div className="flex items-center gap-2 md:gap-3 flex-wrap">
           <Badge variant={modeBadge.variant}>{modeBadge.text}</Badge>
           {initData?.topic && <span className="text-sm text-dim">{initData.topic}</span>}
+          {initData?.mode === "resume" && (
+            <Badge variant="outline" className="text-dim">
+              {resumeControl.short_name} · {resumeControl.pressure_label}
+            </Badge>
+          )}
           {progress && (
             <span className="text-[13px] text-dim flex items-center gap-1.5">
               <span className="text-border">|</span>

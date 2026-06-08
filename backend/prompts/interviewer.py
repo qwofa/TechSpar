@@ -49,6 +49,8 @@ RESUME_INTERVIEWER_SYSTEM = """你是一位在「{target_role}」这个方向有
 ## 候选人历史画像（来自之前的面试记录）
 {user_profile}
 
+{interview_control}
+
 ## 规则
 - 每次只提一个话题/问题，保持对话节奏
 - 不要重复问过的内容

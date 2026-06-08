@@ -2,6 +2,7 @@
 
 import logging
 
+from backend.interview_control import public_resume_interview_control_from
 from backend.models import InterviewMode
 from backend.storage.sessions import get_session
 
@@ -57,11 +58,27 @@ async def get_or_restore_resume_graph(session_id: str, user_id: str) -> dict | N
     if not state.values:
         return None
 
+    state_values = state.values or {}
+    meta = session.get("meta") or {}
+    interview_control = public_resume_interview_control_from(
+        state_values.get("interview_control")
+        or meta.get("interview_control")
+        or meta.get("interview_control_preset")
+    )
+    target_role = (state_values.get("target_role") or meta.get("target_role") or "").strip()
     entry = {
         "graph": graph,
         "config": config,
         "mode": InterviewMode.RESUME,
         "topic": session.get("topic"),
+        "target_role": target_role,
+        "interview_control": interview_control,
+        "meta": {
+            **meta,
+            "target_role": target_role,
+            "interview_control": interview_control,
+            "interview_control_preset": interview_control["id"],
+        },
         "user_id": user_id,
     }
     _graphs[session_id] = entry

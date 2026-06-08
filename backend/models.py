@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from langgraph.graph import add_messages
 
 from backend.config import DEFAULT_API_EMBED_BATCH_SIZE
+from backend.interview_control import DEFAULT_RESUME_INTERVIEW_CONTROL_ID
 
 
 # ── Enums ──
@@ -34,6 +35,7 @@ class ResumeInterviewState(TypedDict, total=False):
     messages: Annotated[list, add_messages]
     phase: str           # InterviewPhase value
     target_role: str     # 候选人应聘岗位，注入 interviewer prompt
+    interview_control: dict
     resume_context: str
     questions_asked: list[str]
     phase_question_count: int
@@ -63,6 +65,7 @@ class StartInterviewRequest(BaseModel):
     num_questions: int | None = None
     divergence: int | None = None
     target_role: str | None = None  # resume 模式必填，缺省时回落到 profile.target_role
+    interview_control_preset: str = DEFAULT_RESUME_INTERVIEW_CONTROL_ID
 
 
 class JobPrepPreviewRequest(BaseModel):

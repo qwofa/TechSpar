@@ -1,4 +1,12 @@
+import { AUTH_EXPIRED_EVENT } from "./interview";
+
 const API_BASE = "/api";
+
+function notifyAuthExpired() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+  }
+}
 
 function authHeaders(extra = {}) {
   const token = localStorage.getItem("token");
@@ -11,9 +19,7 @@ async function authFetch(url, options = {}) {
   const headers = authHeaders(options.headers);
   const res = await fetch(url, { ...options, headers });
   if (res.status === 401) {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.href = "/login";
+    notifyAuthExpired();
     throw new Error("Session expired");
   }
   return res;

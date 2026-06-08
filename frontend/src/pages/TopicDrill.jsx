@@ -3,18 +3,18 @@ import { useNavigate } from "react-router-dom";
 import { Target, Play, Layers } from "lucide-react";
 import TopicCard from "../components/TopicCard";
 import { getTopics, startInterview } from "../api/interview";
+import { useSessionLauncher } from "../hooks/useSessionLauncher";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTaskStatus } from "../contexts/taskStatusShared";
 
 export default function TopicDrill() {
   const navigate = useNavigate();
   const [topics, setTopics] = useState({});
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [pageLoading, setPageLoading] = useState(true);
-  const { isCreatingSession, setCreatingSession } = useTaskStatus();
-  const loading = isCreatingSession("topic_drill");
+  const launcher = useSessionLauncher({ key: "topic_drill", navigate });
+  const loading = launcher.loading;
 
   useEffect(() => {
     getTopics()
@@ -25,15 +25,7 @@ export default function TopicDrill() {
 
   const handleStart = async () => {
     if (!selectedTopic) return;
-    setCreatingSession("topic_drill", true);
-    try {
-      const data = await startInterview("topic_drill", selectedTopic);
-      navigate(`/interview/${data.session_id}`, { state: data });
-    } catch (err) {
-      alert("启动失败: " + err.message);
-    } finally {
-      setCreatingSession("topic_drill", false);
-    }
+    await launcher.launch(() => startInterview("topic_drill", selectedTopic));
   };
 
   return (
@@ -54,6 +46,12 @@ export default function TopicDrill() {
           锁定高频技术盲区，进行高度浓缩的模块化实战。全天候模拟压迫感，AI 会根据应答水平动态下发深潜追问，直到触达个人的知识边界。
         </div>
       </div>
+
+      {launcher.error && (
+        <div className="mb-6 rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red">
+          {launcher.error}
+        </div>
+      )}
 
       {/* 选择面板标题 */}
       <div className="flex items-center gap-2 mb-6">
