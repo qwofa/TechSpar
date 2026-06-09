@@ -2,41 +2,17 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="cf766949-725b-412a-836d-8149a154c16f" name="更改" comment="">
-      <change beforePath="$PROJECT_DIR$/backend/auth.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/auth.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/copilot/intent_classifier.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/copilot/intent_classifier.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/copilot/strategy_tree.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/copilot/strategy_tree.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/copilot/voiceprint.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/copilot/voiceprint.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/graph.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/graph.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/graphs/review.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/graphs/review.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/indexer.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/indexer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/llm_provider.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/llm_provider.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/migrate.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/migrate.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routers/auth.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/auth.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routers/copilot.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/copilot.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routers/history.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/history.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/interview_control.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/interview_control.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/routers/interview.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/interview.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routers/knowledge.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/knowledge.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routers/profile.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/profile.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routers/recording.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/recording.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routers/resume.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/resume.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routers/voiceprint.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routers/voiceprint.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/runtime.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/runtime.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/storage/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/storage/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/storage/copilot_preps.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/storage/copilot_preps.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/storage/data_migration.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/storage/data_migration.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/storage/sessions.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/storage/sessions.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/vector_memory.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/vector_memory.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/api/interview.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/api/interview.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/api/voiceprint.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/api/voiceprint.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Sidebar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Sidebar.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/TaskNotification.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/TaskNotification.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/contexts/AuthContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/contexts/AuthContext.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/contexts/TaskStatusContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/contexts/TaskStatusContext.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/History.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/History.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/RecordingAnalysis.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/RecordingAnalysis.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/lib/interviewControl.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/lib/interviewControl.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Interview.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/Interview.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/pages/ResumeInterview.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/ResumeInterview.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/pages/Review.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/Review.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/TopicDrill.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/TopicDrill.jsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -85,6 +61,7 @@
       <workItem from="1780714937721" duration="742000" />
       <workItem from="1780721956037" duration="2153000" />
       <workItem from="1780737348092" duration="4285000" />
+      <workItem from="1780971965803" duration="1364000" />
     </task>
     <servers />
   </component>

@@ -110,6 +110,95 @@ function PointList({ title, items, tone = "red" }) {
   );
 }
 
+function formatPercent(value) {
+  if (value == null || value === "") return "0%";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return `${value}%`;
+  return Number.isInteger(num) ? `${num}%` : `${num.toFixed(1)}%`;
+}
+
+function ResumeControlReview({ control, controlReview }) {
+  const distribution = controlReview?.distribution || [];
+  const dominant = controlReview?.dominant_behaviors || [];
+  const highlights = control?.behavior_budget_highlights || [];
+
+  if (!distribution.length && !highlights.length) return null;
+
+  return (
+    <>
+      <Card className="mb-6">
+        <CardContent className="p-5 md:p-7">
+          <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
+            <div>
+              <div className="text-lg font-semibold">挡位执行解释</div>
+              <div className="mt-1 text-sm text-dim leading-relaxed">
+                {controlReview?.alignment_summary || control?.budget_preview_summary || "这场面试会围绕当前挡位重点展开。"}
+              </div>
+            </div>
+            <Badge variant="outline">{control?.name} · {control?.pressure_label}</Badge>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-4">
+            {highlights.map((item) => (
+              <Badge key={item.key} variant="secondary">预期 {item.label} · {formatPercent(item.percent)}</Badge>
+            ))}
+            {dominant.map((item) => (
+              <Badge key={`actual-${item.key}`} variant="outline">实际 {item.label} · {item.count} 次</Badge>
+            ))}
+          </div>
+
+          {control?.difference_note && (
+            <div className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[13px] leading-relaxed text-dim">
+              {control.difference_note}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardContent className="p-5 md:p-7">
+          <div className="text-base font-semibold mb-4">预算 vs 实际</div>
+          <div className="flex flex-col gap-4">
+            {distribution.map((item) => {
+              const actual = Number(item.actual_percent) || 0;
+              const target = Number(item.target_percent) || 0;
+              const color = item.alignment === "above"
+                ? "var(--primary)"
+                : item.alignment === "below"
+                  ? "#e2b93b"
+                  : "var(--success)";
+              return (
+                <div key={item.key}>
+                  <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                    <div>
+                      <div className="text-sm font-medium text-text">{item.label}</div>
+                      {item.examples?.[0] && (
+                        <div className="mt-1 text-[12px] leading-relaxed text-dim">例如：{item.examples[0]}</div>
+                      )}
+                    </div>
+                    <div className="text-right text-[12px] text-dim shrink-0">
+                      <div>实际 {item.count} 次 · {formatPercent(actual)}</div>
+                      <div>预算 {formatPercent(target)}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="h-2 rounded-full bg-border overflow-hidden">
+                      <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${actual}%`, background: color }} />
+                    </div>
+                    <div className="h-2 rounded-full bg-hover overflow-hidden">
+                      <div className="h-full rounded-full opacity-70 transition-[width] duration-500" style={{ width: `${target}%`, background: "rgba(148,163,184,0.65)" }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
 function SoloRecordingReview({ topicsCovered, overall }) {
   const avgScore = overall?.avg_score || "-";
   return (
@@ -533,7 +622,7 @@ export default function Review() {
   const [interviewControl, setInterviewControl] = useState(stateData.interview_control || stateData.meta?.interview_control || null);
   const [referenceAnswers, setReferenceAnswers] = useState(stateData.reference_answers || {});
   const [showTranscript, setShowTranscript] = useState(false);
-  const [loading, setLoading] = useState(!review && !scores);
+  const loading = !review && !scores;
   const [restarting, setRestarting] = useState(false);
   const showHistoryBack = Boolean(stateData.fromHistory) && hasHistoryReturnContext(sessionId);
   const handleBackToHistory = () => {
@@ -562,7 +651,9 @@ export default function Review() {
         });
         data = await startInterview("resume", null, {
           targetRole: m.target_role || stateData.target_role,
-          interviewControlPreset: control.id,
+          interviewControlPreset: control.base_preset_id || control.id,
+          previewPackageId: m.preview_package_id,
+          interviewControlOverrides: m.interview_control_overrides,
         });
       } else {
         data = await startInterview(currentMode, topic || stateData.topic);
@@ -576,35 +667,39 @@ export default function Review() {
   };
 
   useEffect(() => {
-    if (!review && !scores) {
-      setLoading(true);
-      getReview(sessionId)
-        .then((data) => {
-          setReview(data.review);
-          if (data.scores) setScores(data.scores);
-          if (data.questions) setQuestions(data.questions);
-          if (data.transcript) setMessages(data.transcript);
-          if (data.mode) setMode(data.mode);
-          if (data.topic) setTopic(data.topic);
-          if (data.overall && Object.keys(data.overall).length) {
-            setOverall(data.overall);
-          } else if (data.weak_points) {
-            const wp = Array.isArray(data.weak_points) ? data.weak_points : [];
-            if (wp.length) setOverall((prev) => ({ ...prev, new_weak_points: wp }));
-          }
-          const tc = data.topics_covered || data.overall?.topics_covered;
-          if (tc) setTopicsCovered(tc);
-          if (data.meta) setMeta(data.meta);
-          if (data.interview_control) setInterviewControl(data.interview_control);
-          if (data.reference_answers) setReferenceAnswers(data.reference_answers);
-          if (data.mode === "topic_drill" || data.mode === "jd_prep") {
-            setAnswers(inferAnswers(data.questions || [], data.transcript || []));
-          }
-        })
-        .catch((err) => setReview("加载失败: " + err.message))
-        .finally(() => setLoading(false));
-    }
-  }, [sessionId, review, scores]);
+    if (!loading) return;
+    let cancelled = false;
+    getReview(sessionId)
+      .then((data) => {
+        if (cancelled) return;
+        setReview(data.review);
+        if (data.scores) setScores(data.scores);
+        if (data.questions) setQuestions(data.questions);
+        if (data.transcript) setMessages(data.transcript);
+        if (data.mode) setMode(data.mode);
+        if (data.topic) setTopic(data.topic);
+        if (data.overall && Object.keys(data.overall).length) {
+          setOverall(data.overall);
+        } else if (data.weak_points) {
+          const wp = Array.isArray(data.weak_points) ? data.weak_points : [];
+          if (wp.length) setOverall((prev) => ({ ...prev, new_weak_points: wp }));
+        }
+        const tc = data.topics_covered || data.overall?.topics_covered;
+        if (tc) setTopicsCovered(tc);
+        if (data.meta) setMeta(data.meta);
+        if (data.interview_control) setInterviewControl(data.interview_control);
+        if (data.reference_answers) setReferenceAnswers(data.reference_answers);
+        if (data.mode === "topic_drill" || data.mode === "jd_prep") {
+          setAnswers(inferAnswers(data.questions || [], data.transcript || []));
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setReview("加载失败: " + err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, loading]);
 
   if (loading) {
     return (
@@ -631,6 +726,7 @@ export default function Review() {
     interview_control: interviewControl,
     meta,
   });
+  const controlReview = currentMode === "resume" ? overall?.interview_control_review : null;
 
   return (
     <div className="flex-1 px-4 py-8 md:px-6 md:py-10 max-w-3xl mx-auto w-full">
@@ -665,6 +761,7 @@ export default function Review() {
           <DrillReview scores={scores} overall={overall} questions={questions} answers={answers} topic={topic} sessionId={sessionId} initialRefAnswers={referenceAnswers} />
         ) : (
           <>
+            <ResumeControlReview control={resumeControl} controlReview={controlReview} />
             <DimensionScores
               dimensionScores={stateData.dimension_scores || overall?.dimension_scores}
               avgScore={stateData.avg_score ?? overall?.avg_score}

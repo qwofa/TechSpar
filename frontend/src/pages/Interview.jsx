@@ -31,7 +31,11 @@ export default function Interview() {
   const isBatchMode = initData?.mode === "topic_drill" || initData?.mode === "jd_prep";
   const isJobPrep = initData?.mode === "jd_prep";
 
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => (
+    location.state && !isBatchMode && location.state.message
+      ? [{ role: "assistant", content: location.state.message }]
+      : []
+  ));
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [finished, setFinished] = useState(false);
@@ -53,13 +57,7 @@ export default function Interview() {
   });
 
   useEffect(() => {
-    // Fresh start from a landing page → location.state carries everything.
-    if (location.state) {
-      if (!isBatchMode && location.state.message) {
-        setMessages([{ role: "assistant", content: location.state.message }]);
-      }
-      return;
-    }
+    if (location.state) return;
     // Resume-from-history: rebuild from server state.
     let cancelled = false;
     (async () => {
@@ -115,7 +113,7 @@ export default function Interview() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [location.state, sessionId, startTask]);
 
   useEffect(() => {
     if (!isBatchMode) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -526,9 +524,16 @@ export default function Interview() {
           <Badge variant={modeBadge.variant}>{modeBadge.text}</Badge>
           {initData?.topic && <span className="text-sm text-dim">{initData.topic}</span>}
           {initData?.mode === "resume" && (
-            <Badge variant="outline" className="text-dim">
-              {resumeControl.short_name} · {resumeControl.pressure_label}
-            </Badge>
+            <>
+              <Badge variant="outline" className="text-dim">
+                {resumeControl.short_name} · {resumeControl.pressure_label}
+              </Badge>
+              {(resumeControl.behavior_budget_highlights || []).map((item) => (
+                <Badge key={item.key} variant="secondary" className="hidden md:inline-flex">
+                  {item.label}
+                </Badge>
+              ))}
+            </>
           )}
           {progress && (
             <span className="text-[13px] text-dim flex items-center gap-1.5">

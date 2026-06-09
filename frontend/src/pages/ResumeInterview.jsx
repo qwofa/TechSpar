@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, ChevronRight, CalendarDays, UploadCloud, CheckCircle2, Clock, Play, Briefcase, Sparkles } from "lucide-react";
-import { getResumeStatus, uploadResume, startInterview, getHistory, getProfile, inferTargetRole } from "../api/interview";
+import { getResumeStatus, uploadResume, startInterview, getHistory, getProfile, inferTargetRole, previewResumeInterview } from "../api/interview";
 import { useSessionLauncher } from "../hooks/useSessionLauncher";
 import {
   DEFAULT_RESUME_INTERVIEW_CONTROL_ID,
+  DEFAULT_RESUME_INTERVIEW_OVERRIDES,
   RESUME_INTERVIEW_CONTROLS,
+  RESUME_INTERVIEW_DIY_OPTIONS,
+  buildDIYResumeInterviewControl,
   normalizeResumeInterviewControl,
   readResumeInterviewControl,
 } from "../lib/interviewControl";
@@ -53,6 +56,164 @@ function formatDate(iso) {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function ControlPreviewPanel({ control }) {
+  const highlights = control.behavior_budget_highlights || [];
+
+  return (
+    <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="rounded-2xl border border-border/70 bg-background/60 px-4 py-4 md:px-5">
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div>
+            <div className="text-[13px] font-semibold text-text">预算画像预览</div>
+            <div className="mt-1 text-[12px] text-dim">开始前先看这档更常把问题问向哪里</div>
+          </div>
+          <Badge variant="secondary">{control.budget_preview_summary}</Badge>
+        </div>
+        <div className="grid gap-2.5">
+          {(control.behavior_budget_profile || []).map((item) => {
+            const accent = item.emphasis === "high"
+              ? "var(--primary)"
+              : item.emphasis === "medium"
+                ? "var(--ai-glow)"
+                : "rgba(148,163,184,0.7)";
+            return (
+              <div key={item.key}>
+                <div className="mb-1.5 flex items-center justify-between gap-3 text-[12px]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium text-text truncate">{item.label}</span>
+                    {item.rank <= 2 && <Badge variant="outline">高亮</Badge>}
+                  </div>
+                  <span className="text-dim shrink-0">{item.percent}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-hover overflow-hidden">
+                  <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${item.percent}%`, background: accent }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border/70 bg-background/60 px-4 py-4 md:px-5">
+        <div className="text-[13px] font-semibold text-text">样题预览</div>
+        <div className="mt-1 text-[12px] text-dim">预览固定高亮两组最明显的动作差异</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {highlights.map((item) => (
+            <Badge key={item.key} variant="outline">
+              {item.label} · {item.percent}%
+            </Badge>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-col gap-3">
+          {(control.sample_preview || []).map((sample) => (
+            <div key={`${control.id}-${sample.budget_key}`} className="rounded-xl border border-border/60 bg-card/70 px-3.5 py-3">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <Badge variant="secondary">{sample.label}</Badge>
+                <span className="text-[11px] text-dim">{sample.hint}</span>
+              </div>
+              <div className="text-[13px] leading-6 text-text">{sample.prompt}</div>
+            </div>
+          ))}
+        </div>
+        {control.difference_note && (
+          <div className="mt-4 rounded-xl border border-primary/15 bg-primary/6 px-3.5 py-3 text-[12px] leading-5 text-dim">
+            {control.difference_note}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PreviewPackagePanel({ previewPackage, previewLoading, previewError, effectiveControl }) {
+  if (previewLoading) {
+    return <Skeleton className="mt-6 h-[220px] rounded-2xl w-full" />;
+  }
+
+  if (previewError) {
+    return (
+      <div className="mt-6 rounded-2xl border border-red/20 bg-red/10 px-4 py-4 text-sm text-red">
+        {previewError}
+      </div>
+    );
+  }
+
+  if (!previewPackage) return null;
+
+  const signals = previewPackage.resume_signals || {};
+
+  return (
+    <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-4 md:px-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-[13px] font-semibold text-text">预生成包</div>
+          <div className="mt-1 text-[12px] leading-5 text-dim">
+            {previewPackage.recommended_reason}
+          </div>
+        </div>
+        <Badge variant="outline">包 ID · {previewPackage.id}</Badge>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Badge variant="secondary">推荐挡位 · {previewPackage.recommended_control?.name || effectiveControl.name}</Badge>
+        <Badge variant="secondary">当前启动 · {effectiveControl.name}</Badge>
+        {effectiveControl.is_diy_adjusted && <Badge variant="outline">已做有限 DIY</Badge>}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-border/60 bg-background/70 px-3.5 py-3">
+          <div className="text-[12px] font-semibold text-text">简历抬头线索</div>
+          <div className="mt-2 flex flex-col gap-1.5 text-[12px] text-dim leading-5">
+            {(signals.headline_lines || []).slice(0, 3).map((item) => <div key={item}>{item}</div>)}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/60 bg-background/70 px-3.5 py-3">
+          <div className="text-[12px] font-semibold text-text">项目 / 指标信号</div>
+          <div className="mt-2 flex flex-col gap-1.5 text-[12px] text-dim leading-5">
+            {[...(signals.project_lines || []).slice(0, 2), ...(signals.metric_lines || []).slice(0, 1)].map((item) => <div key={item}>{item}</div>)}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/60 bg-background/70 px-3.5 py-3">
+          <div className="text-[12px] font-semibold text-text">识别到的技术栈</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {(signals.stack_tags || []).length ? (signals.stack_tags || []).map((item) => (
+              <span key={item} className="rounded-full bg-hover px-2 py-1 text-[11px] text-dim">{item}</span>
+            )) : <span className="text-[12px] text-dim">当前未提取到明显技术栈标签</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DIYOptionGroup({ title, description, value, options, onChange }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-background/60 px-4 py-4">
+      <div className="text-[13px] font-semibold text-text">{title}</div>
+      <div className="mt-1 text-[12px] text-dim">{description}</div>
+      <div className="mt-3 grid gap-2">
+        {options.map((option) => {
+          const active = value === option.id;
+          return (
+            <button
+              key={`${title}-${option.id}`}
+              type="button"
+              className={cn(
+                "rounded-xl border px-3.5 py-3 text-left transition-all",
+                active ? "border-primary/45 bg-primary/10" : "border-border/60 bg-card/55 hover:border-primary/30 hover:bg-primary/5"
+              )}
+              onClick={() => onChange(option.id)}
+            >
+              <div className="text-[13px] font-medium text-text">{option.label}</div>
+              <div className="mt-1 text-[12px] leading-5 text-dim">{option.description}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function ResumeInterview() {
   const navigate = useNavigate();
   const [resumeFile, setResumeFile] = useState(null);
@@ -63,9 +224,16 @@ export default function ResumeInterview() {
   const [targetRole, setTargetRole] = useState("");
   const [targetRoleInferring, setTargetRoleInferring] = useState(false);
   const [selectedControlId, setSelectedControlId] = useState(DEFAULT_RESUME_INTERVIEW_CONTROL_ID);
+  const [controlTouched, setControlTouched] = useState(false);
+  const [diyOverrides, setDiyOverrides] = useState(() => ({ ...DEFAULT_RESUME_INTERVIEW_OVERRIDES }));
+  const [diyTouched, setDiyTouched] = useState(false);
+  const [previewPackage, setPreviewPackage] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
   const launcher = useSessionLauncher({ key: "resume", navigate });
   const loading = launcher.loading;
   const selectedControl = normalizeResumeInterviewControl(selectedControlId);
+  const effectiveControl = buildDIYResumeInterviewControl(selectedControl, diyOverrides);
 
   const autoInferRole = async () => {
     setTargetRoleInferring(true);
@@ -99,6 +267,60 @@ export default function ResumeInterview() {
       .finally(() => setHistoryLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!resumeFile) {
+      setPreviewPackage(null);
+      setPreviewError("");
+      setPreviewLoading(false);
+      return;
+    }
+
+    const role = targetRole.trim();
+    if (!role) {
+      setPreviewPackage(null);
+      setPreviewError("");
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError("");
+
+    previewResumeInterview(role)
+      .then((data) => {
+        if (cancelled) return;
+        const nextPreview = data?.preview_package || null;
+        setPreviewPackage(nextPreview);
+
+        if (!nextPreview) return;
+
+        if (!controlTouched) {
+          setSelectedControlId(nextPreview.recommended_preset_id || DEFAULT_RESUME_INTERVIEW_CONTROL_ID);
+        }
+
+        if (!diyTouched) {
+          setDiyOverrides({
+            ...DEFAULT_RESUME_INTERVIEW_OVERRIDES,
+            ...(nextPreview.suggested_overrides || nextPreview.default_overrides || {}),
+          });
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPreviewPackage(null);
+        setPreviewError(`预生成包生成失败: ${err.message}`);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeFile, targetRole, controlTouched, diyTouched]);
+
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -107,6 +329,12 @@ export default function ResumeInterview() {
     try {
       const data = await uploadResume(file);
       setResumeFile({ filename: data.filename, size: data.size });
+      setPreviewPackage(null);
+      setPreviewError("");
+      setControlTouched(false);
+      setDiyTouched(false);
+      setSelectedControlId(DEFAULT_RESUME_INTERVIEW_CONTROL_ID);
+      setDiyOverrides({ ...DEFAULT_RESUME_INTERVIEW_OVERRIDES });
       if (!hadResume && !targetRole.trim()) {
         await autoInferRole();
       }
@@ -118,13 +346,38 @@ export default function ResumeInterview() {
     }
   };
 
+  const handleSelectControl = (controlId) => {
+    setSelectedControlId(controlId);
+    setControlTouched(true);
+  };
+
+  const handleChangeOverride = (key, value) => {
+    setDiyOverrides((current) => ({
+      ...current,
+      [key]: value,
+    }));
+    setDiyTouched(true);
+  };
+
+  const handleResetToSuggested = () => {
+    setControlTouched(false);
+    setDiyTouched(false);
+    setSelectedControlId(previewPackage?.recommended_preset_id || DEFAULT_RESUME_INTERVIEW_CONTROL_ID);
+    setDiyOverrides({
+      ...DEFAULT_RESUME_INTERVIEW_OVERRIDES,
+      ...(previewPackage?.suggested_overrides || previewPackage?.default_overrides || {}),
+    });
+  };
+
   const handleStart = async () => {
     if (!resumeFile) return;
     const role = targetRole.trim();
-    if (!role) return;
+    if (!role || !previewPackage) return;
     await launcher.launch(() => startInterview("resume", null, {
       targetRole: role,
       interviewControlPreset: selectedControl.id,
+      previewPackageId: previewPackage.id,
+      interviewControlOverrides: diyOverrides,
     }));
   };
 
@@ -240,7 +493,7 @@ export default function ResumeInterview() {
                 <div className="mt-1 text-[12px] text-dim">挡位会写入本次会话，并影响追问压力、节奏和复盘上下文</div>
               </div>
               <Badge variant="outline" className="shrink-0">
-                {selectedControl.pressure_label} · {selectedControl.pace_label}
+                {effectiveControl.pressure_label} · {effectiveControl.pace_label}
               </Badge>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
@@ -254,7 +507,7 @@ export default function ResumeInterview() {
                       "rounded-2xl border p-4 text-left transition-all bg-card/55 hover:border-primary/35 hover:bg-primary/5",
                       active ? "border-primary/45 bg-primary/10 shadow-sm shadow-primary/10" : "border-border/70"
                     )}
-                    onClick={() => setSelectedControlId(control.id)}
+                    onClick={() => handleSelectControl(control.id)}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-semibold text-text">{control.name}</div>
@@ -273,6 +526,74 @@ export default function ResumeInterview() {
                 );
               })}
             </div>
+
+            <PreviewPackagePanel
+              previewPackage={previewPackage}
+              previewLoading={previewLoading}
+              previewError={previewError}
+              effectiveControl={effectiveControl}
+            />
+
+            <div className="mt-6 rounded-2xl border border-border/70 bg-card/40 p-4 md:p-5">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-[13px] font-semibold text-text">有限 DIY 调整</div>
+                  <div className="mt-1 text-[12px] text-dim">只允许在当前挡位底座上微调压力、追问风格和额外关注点，不会脱离该挡位边界。</div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {previewPackage?.suggested_control?.is_diy_adjusted && !diyTouched && (
+                    <Badge variant="secondary">已套用系统建议</Badge>
+                  )}
+                  {effectiveControl.is_diy_adjusted && <Badge variant="outline">当前已启用 DIY</Badge>}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-3"
+                    onClick={handleResetToSuggested}
+                    disabled={previewLoading || (!previewPackage && !diyTouched && !controlTouched)}
+                  >
+                    恢复推荐配置
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                <DIYOptionGroup
+                  title="压力微调"
+                  description="只微调压力和推进速度，不改变本场核心面试风格。"
+                  value={diyOverrides.pressure_tuning}
+                  options={RESUME_INTERVIEW_DIY_OPTIONS.pressure_tuning}
+                  onChange={(value) => handleChangeOverride("pressure_tuning", value)}
+                />
+                <DIYOptionGroup
+                  title="追问路径"
+                  description="决定是先澄清还是更快进入细节和真实性验证。"
+                  value={diyOverrides.followup_style}
+                  options={RESUME_INTERVIEW_DIY_OPTIONS.followup_style}
+                  onChange={(value) => handleChangeOverride("followup_style", value)}
+                />
+                <DIYOptionGroup
+                  title="额外加码点"
+                  description="在当前挡位里额外提高一个方向的关注比例。"
+                  value={diyOverrides.focus_boost}
+                  options={RESUME_INTERVIEW_DIY_OPTIONS.focus_boost}
+                  onChange={(value) => handleChangeOverride("focus_boost", value)}
+                />
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-[13px] font-semibold text-text">本场实际启动画像</div>
+                    <div className="mt-1 text-[12px] text-dim">这里展示最终会写入会话的控制对象预览。</div>
+                  </div>
+                  <Badge variant="secondary">{effectiveControl.name}</Badge>
+                </div>
+                <div className="mt-3 text-[13px] leading-6 text-dim">{effectiveControl.diy_summary || "沿用固定挡位默认节奏。"}</div>
+                <ControlPreviewPanel control={effectiveControl} />
+              </div>
+            </div>
           </div>
 
           {launcher.error && (
@@ -283,7 +604,15 @@ export default function ResumeInterview() {
 
           <div className="mt-6 pt-5 border-t border-border/70 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-[13px] text-dim w-full md:w-auto text-center md:text-left">
-              准备开始迎接挑战？点击右侧正式进入模拟环境
+              {!resumeFile
+                ? "请先上传简历。"
+                : !targetRole.trim()
+                  ? "请先填写目标岗位。"
+                  : previewLoading
+                    ? "正在生成这次面试的预生成包和推荐配置。"
+                    : previewError
+                      ? "预生成包当前不可用，修复后才会允许正式启动。"
+                      : "准备开始迎接挑战？点击右侧正式进入模拟环境"}
             </div>
             {loading ? (
                <div className="w-full md:w-[220px] rounded-xl bg-card border border-primary/20 py-3.5 px-4 flex items-center justify-center gap-2 relative overflow-hidden shrink-0 shadow-sm">
@@ -296,7 +625,7 @@ export default function ResumeInterview() {
                 variant="gradient"
                 size="lg"
                 className="w-full md:w-auto h-14 px-10 text-[16px] font-bold tracking-wide rounded-xl shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/30 disabled:opacity-40 disabled:hover:translate-y-0 disabled:shadow-none shrink-0"
-                disabled={!resumeFile || !targetRole.trim() || targetRoleInferring}
+                disabled={!resumeFile || !targetRole.trim() || targetRoleInferring || previewLoading || !previewPackage || !!previewError}
                 onClick={handleStart}
               >
                 <Play size={18} className="mr-2 fill-current" /> 立即开始模拟

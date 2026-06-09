@@ -207,6 +207,20 @@ def _topic_has_docs(topic: str, user_id: str) -> bool:
     )
 
 
+def read_resume_text(user_id: str) -> str:
+    """Return the user's uploaded resume text for preview / gating flows."""
+    resume_dir = settings.user_resume_path(user_id)
+    if not resume_dir.exists():
+        return ""
+
+    pages: list[str] = []
+    for pdf in sorted(resume_dir.glob("*.pdf")):
+        text = _read_pdf(pdf).strip()
+        if text:
+            pages.append(text)
+    return "\n\n".join(pages).strip()
+
+
 # ── Retrieval (numpy brute-force cosine) ──
 
 def _retrieve(user_id: str, chunk_type: str, topic: str | None, query: str, top_k: int) -> list[str]:

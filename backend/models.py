@@ -66,6 +66,12 @@ class StartInterviewRequest(BaseModel):
     divergence: int | None = None
     target_role: str | None = None  # resume 模式必填，缺省时回落到 profile.target_role
     interview_control_preset: str = DEFAULT_RESUME_INTERVIEW_CONTROL_ID
+    preview_package_id: str | None = None
+    interview_control_overrides: dict | None = None
+
+
+class ResumeInterviewPreviewRequest(BaseModel):
+    target_role: str | None = None
 
 
 class JobPrepPreviewRequest(BaseModel):

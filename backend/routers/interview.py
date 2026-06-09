@@ -19,11 +19,15 @@ from backend.graphs.review import generate_review
 from backend.graphs.topic_drill import evaluate_drill_answers, generate_drill_questions
 from backend.indexer import load_topics
 from backend.interview_control import (
+    build_diy_resume_interview_control,
     build_resume_interview_meta,
+    build_resume_interview_preview_package,
     enrich_resume_session_payload,
     list_resume_interview_controls,
+    normalize_resume_interview_overrides,
     public_resume_interview_control,
     resolve_resume_interview_control,
+    summarize_resume_interview_behavior,
 )
 from backend.memory import extract_behavior_ops, get_profile, llm_update_profile, update_profile_after_interview, update_target_role
 from backend.models import (
@@ -33,6 +37,7 @@ from backend.models import (
     InterviewPhase,
     JobPrepPreviewRequest,
     JobPrepStartRequest,
+    ResumeInterviewPreviewRequest,
     StartInterviewRequest,
 )
 from backend.review_formatters import format_drill_review, format_job_prep_review
@@ -72,6 +77,32 @@ _JOB_PREP_START_TASK = "job_prep_start"
 @router.get("/interview/resume-controls")
 def get_resume_interview_controls():
     return {"items": list_resume_interview_controls()}
+
+
+@router.post("/interview/resume-preview")
+async def build_resume_preview_package(
+    req: ResumeInterviewPreviewRequest,
+    user_id: str = Depends(get_current_user),
+):
+    target_role = (req.target_role or "").strip()
+    profile = await asyncio.to_thread(get_profile, user_id)
+    if target_role:
+        try:
+            await update_target_role(user_id, target_role)
+        except Exception as exc:
+            logger.warning("Failed to persist target role while building resume preview for user %s: %s", user_id, exc)
+    try:
+        preview_package = await asyncio.to_thread(
+            build_resume_interview_preview_package,
+            user_id,
+            target_role,
+            profile=profile,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(500, str(exc)) from exc
+    return {"preview_package": preview_package}
 
 
 def _build_resume_start_payload(
@@ -402,9 +433,9 @@ async def start_interview(
     if req.mode == InterviewMode.RESUME:
         from backend.graphs.resume_interview import compile_resume_interview
 
+        profile = await asyncio.to_thread(get_profile, user_id)
         target_role = (req.target_role or "").strip()
         if not target_role:
-            profile = await asyncio.to_thread(get_profile, user_id)
             target_role = (profile.get("target_role") or "").strip()
         if not target_role:
             raise HTTPException(400, "请先填写目标岗位")
@@ -415,10 +446,40 @@ async def start_interview(
             logger.warning("Failed to update target role for user %s: %s", user_id, exc)
 
         try:
-            interview_control = resolve_resume_interview_control(req.interview_control_preset, strict=True)
+            preview_package = await asyncio.to_thread(
+                build_resume_interview_preview_package,
+                user_id,
+                target_role,
+                profile=profile,
+            )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        meta = build_resume_interview_meta(target_role, interview_control["id"])
+        except RuntimeError as exc:
+            raise HTTPException(500, str(exc)) from exc
+
+        if req.preview_package_id and preview_package.get("id") != req.preview_package_id:
+            raise HTTPException(400, "预生成包已过期，请重新生成后再开始面试")
+
+        preset_id = (req.interview_control_preset or "").strip() or preview_package.get("recommended_preset_id")
+        try:
+            resolve_resume_interview_control(preset_id, strict=True)
+            interview_control = build_diy_resume_interview_control(
+                preset_id,
+                req.interview_control_overrides,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        overrides = normalize_resume_interview_overrides(req.interview_control_overrides)
+        meta = build_resume_interview_meta(
+            target_role,
+            preset_id,
+            interview_control=interview_control,
+            preview_package=preview_package,
+        )
+        meta["interview_control_overrides"] = overrides
+        meta["recommended_preset_id"] = preview_package.get("recommended_preset_id")
+        meta["suggested_overrides"] = preview_package.get("suggested_overrides")
 
         try:
             graph = await asyncio.to_thread(compile_resume_interview, user_id)
@@ -612,6 +673,12 @@ async def _run_resume_review(session_id: str, user_id: str):
         topic_name = values.get("topic_name", entry.get("topic"))
         mode = entry["mode"]
         topic = entry.get("topic")
+        interview_control = (
+            values.get("interview_control")
+            or entry.get("interview_control")
+            or (entry.get("meta") or {}).get("interview_control")
+        )
+        control_review = summarize_resume_interview_behavior(messages, interview_control)
 
         review = await asyncio.to_thread(
             generate_review,
@@ -622,6 +689,8 @@ async def _run_resume_review(session_id: str, user_id: str):
             topic=topic_name,
             eval_history=eval_history,
             resume_context=resume_context,
+            interview_control=interview_control,
+            control_review=control_review,
             user_id=user_id,
         )
 
@@ -637,8 +706,10 @@ async def _run_resume_review(session_id: str, user_id: str):
         resume_overall = {}
         if extraction.get("dimension_scores"):
             resume_overall["dimension_scores"] = extraction["dimension_scores"]
-        if extraction.get("avg_score"):
+        if extraction.get("avg_score") is not None:
             resume_overall["avg_score"] = extraction["avg_score"]
+        if control_review:
+            resume_overall["interview_control_review"] = control_review
 
         await asyncio.to_thread(
             save_review,
